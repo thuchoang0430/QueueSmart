@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import registerImage from "../../assets/register_login_image.png";
+import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import {
   FaUser,
@@ -36,6 +37,7 @@ function Register() {
   const [password, setPassword] = useState<string>("");
   const [confirmPassword, setConfirmPassword] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [submitting, setSubmitting] = useState<boolean>(false);
 
   function switchToLogin(e: React.MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
@@ -44,7 +46,7 @@ function Register() {
     navigate("/");
   }
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
 
@@ -63,14 +65,22 @@ function Register() {
       return;
     }
 
-    const user = register(name, email, password);
+    setSubmitting(true);
 
-    if (!user) {
-      setError("Cannot register account.");
-      return;
+    try {
+      // The backend re-checks all of this and owns the duplicate-email rule -
+      // see backend/src/modules/auth/auth.service.ts
+      await register(name, email, password);
+      navigate("/dashboard");
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.displayMessage
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
     }
-
-    navigate("/dashboard");
   }
 
   return (
@@ -267,9 +277,10 @@ function Register() {
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 py-4 font-bold text-white shadow-lg hover:opacity-90"
+                disabled={submitting}
+                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 py-4 font-bold text-white shadow-lg hover:opacity-90 disabled:opacity-60"
               >
-                Create Account
+                {submitting ? "Creating account..." : "Create Account"}
               </button>
 
               <div className="flex items-center gap-4 text-sm text-slate-400">

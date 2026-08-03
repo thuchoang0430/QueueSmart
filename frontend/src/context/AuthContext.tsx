@@ -1,63 +1,80 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { apiGet, apiPost, clearToken, getToken, setToken } from '../api/client'
 
 export type Role = 'user' | 'admin'
 
 export interface CurrentUser {
+  id: number
   name: string
   email: string
   role: Role
 }
 
-interface StoredAccount extends CurrentUser {
-  password: string
+interface AuthResponse {
+  user: CurrentUser
+  token: string
 }
 
 interface AuthContextValue {
   currentUser: CurrentUser | null
-  login: (email: string, password: string) => CurrentUser | null
-  register: (name: string, email: string, password: string) => CurrentUser | null
-  logout: () => void
+  /** True until the stored token has been checked on first load. */
+  loading: boolean
+  login: (email: string, password: string) => Promise<CurrentUser>
+  register: (name: string, email: string, password: string) => Promise<CurrentUser>
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-// Seed accounts so the demo works out of the box \u2014 same credentials the
-// rest of the team has already been using to test the admin pages.
-const seedAccounts: StoredAccount[] = [
-  { name: 'Student User', email: 'user@test.com', password: 'password', role: 'user' },
-  { name: 'Admin User', email: 'admin@test.com', password: 'password', role: 'admin' },
-]
-
+// Accounts now live in the backend (see backend/src/store/memoryStore.ts).
+// The seeded demo logins are unchanged: user@test.com / admin@test.com,
+// both with the password "password".
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [accounts, setAccounts] = useState<StoredAccount[]>(seedAccounts)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  function login(email: string, password: string): CurrentUser | null {
-    const account = accounts.find(
-      (a) => a.email.toLowerCase() === email.trim().toLowerCase() && a.password === password
-    )
-    if (!account) return null
-    const user: CurrentUser = { name: account.name, email: account.email, role: account.role }
-    setCurrentUser(user)
-    return user
+  // The token survives a page refresh in localStorage, but the backend keeps
+  // sessions in memory - so after a server restart the token is stale and we
+  // have to drop it rather than show a half-logged-in UI.
+  useEffect(() => {
+    if (!getToken()) {
+      setLoading(false)
+      return
+    }
+
+    apiGet<{ user: CurrentUser }>('/auth/me')
+      .then((data) => setCurrentUser(data.user))
+      .catch(() => clearToken())
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function login(email: string, password: string): Promise<CurrentUser> {
+    const data = await apiPost<AuthResponse>('/auth/login', { email, password })
+    setToken(data.token)
+    setCurrentUser(data.user)
+    return data.user
   }
 
-  function register(name: string, email: string, password: string): CurrentUser | null {
-    const exists = accounts.some((a) => a.email.toLowerCase() === email.trim().toLowerCase())
-    if (exists) return null
-    const account: StoredAccount = { name, email: email.trim(), password, role: 'user' }
-    setAccounts((prev) => [...prev, account])
-    const user: CurrentUser = { name, email: account.email, role: 'user' }
-    setCurrentUser(user)
-    return user
+  async function register(name: string, email: string, password: string): Promise<CurrentUser> {
+    const data = await apiPost<AuthResponse>('/auth/register', { name, email, password })
+    setToken(data.token)
+    setCurrentUser(data.user)
+    return data.user
   }
 
-  function logout() {
+  async function logout(): Promise<void> {
+    // Best effort - if the call fails the local session still has to end.
+    try {
+      await apiPost('/auth/logout')
+    } catch {
+      // ignored
+    }
+    clearToken()
     setCurrentUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{ currentUser, login, register, logout }}>
+    <AuthContext.Provider value={{ currentUser, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )

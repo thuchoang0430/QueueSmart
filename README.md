@@ -7,6 +7,7 @@ QueueSmart is a full-stack queue management application developed for COSC. The 
 ## Features
 
 ### Authentication
+<<<<<<< HEAD
 
 - User registration
 - User login
@@ -120,19 +121,55 @@ Commit message:
 ```text
 Test second time login form changes
 ```
+=======
+- User registration
+- User login
+- Role-based authorization (User/Admin)
+
+### Service Management
+- View available services
+- Service descriptions
+- Expected service duration
+- Priority levels
+
+### Queue Management
+- Join a queue
+- Leave a queue
+- View current queue status
+- Serve next customer (Admin)
+- Automatic queue ordering
+
+### Wait Time Estimation
+- Estimated waiting time based on queue position
+- Dynamic updates after queue changes
+
+### Notification System
+- User joins queue
+- User is almost next
+- User served notifications
+
+### History
+- Queue participation history
+- Served history
+- Leave history
+>>>>>>> origin/main
 
 ---
 
 ## Tech Stack
 
 ### Frontend
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 - React
 - TypeScript
 - Vite
 - Tailwind CSS
 
 ### Backend
+<<<<<<< HEAD
 
 - Node.js
 - Express.js
@@ -149,10 +186,20 @@ Test second time login form changes
 - GitHub
 - GitHub Actions
 
+=======
+- Node.js
+- Express.js
+- TypeScript
+
+### Testing
+- Vitest
+
+>>>>>>> origin/main
 ---
 
 ## Project Structure
 
+<<<<<<< HEAD
 ```text
 QueueSmart/
 │
@@ -176,25 +223,49 @@ QueueSmart/
 │
 ├── README.md
 └── package-lock.json
+=======
+```
+QueueSmart-A2/
+│
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── vite.config.ts
+│
+├── backend/
+│   ├── src/
+│   ├── tests/
+│   └── package.json
+│
+└── .github/
+    └── workflows/
+>>>>>>> origin/main
 ```
 
 ---
 
 ## Getting Started
 
+<<<<<<< HEAD
 ### Clone the Repository
+=======
+### Clone Repository
+>>>>>>> origin/main
 
 ```bash
 git clone https://github.com/thuchoang0430/QueueSmart.git
 cd QueueSmart
 ```
 
+<<<<<<< HEAD
 To use the `testing1` branch:
 
 ```bash
 git switch testing1
 ```
 
+=======
+>>>>>>> origin/main
 ---
 
 ## Backend
@@ -205,9 +276,15 @@ npm install
 npm run dev
 ```
 
+<<<<<<< HEAD
 The backend runs on:
 
 ```text
+=======
+Backend runs on:
+
+```
+>>>>>>> origin/main
 http://localhost:4000
 ```
 
@@ -223,9 +300,15 @@ npm install
 npm run dev
 ```
 
+<<<<<<< HEAD
 The frontend runs on:
 
 ```text
+=======
+Frontend runs on:
+
+```
+>>>>>>> origin/main
 http://localhost:5173
 ```
 
@@ -233,14 +316,22 @@ http://localhost:5173
 
 ## Running Tests
 
+<<<<<<< HEAD
 Run the backend tests:
+=======
+Backend tests:
+>>>>>>> origin/main
 
 ```bash
 cd backend
 npm test
 ```
 
+<<<<<<< HEAD
 Run type checking:
+=======
+Type checking:
+>>>>>>> origin/main
 
 ```bash
 npm run typecheck
@@ -252,28 +343,54 @@ npm run typecheck
 
 ### User
 
+<<<<<<< HEAD
 ```text
 Email: user@test.com
 Password: password
+=======
+```
+Email:
+user@test.com
+
+Password:
+password
+>>>>>>> origin/main
 ```
 
 ### Administrator
 
+<<<<<<< HEAD
 ```text
 Email: admin@test.com
 Password: password
 ```
 
+=======
+```
+Email:
+admin@test.com
+
+Password:
+password
+```
+>>>>>>> origin/main
 ---
 
 ## Notes
 
+<<<<<<< HEAD
 - The application includes a React frontend and an Express backend.
 - Backend APIs are consumed by the React frontend.
 - Prisma configuration and an initial database schema are included.
 - Some application data may still use in-memory storage during development and testing.
 - GitHub Pages hosts the frontend only.
 - Local development requires both the backend and frontend servers.
+=======
+- Data is stored in memory.
+- Backend APIs are consumed by the React frontend.
+- GitHub Pages hosts the frontend only.
+- Local development requires both backend and frontend servers.
+>>>>>>> origin/main
 
 ---
 

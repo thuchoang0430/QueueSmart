@@ -1,67 +1,166 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { ApiError } from '../../api/client'
+import {
+  getQueueStatus,
+  joinQueue,
+  leaveQueue,
+  type QueueEntry,
+} from '../../api/queues'
 import { useAuth } from '../../context/AuthContext'
 import { useServices } from '../../context/ServicesContext'
 
+interface ActiveQueue {
+  serviceId: number
+  entry: QueueEntry
+}
+
 export default function JoinQueue() {
   const { currentUser } = useAuth()
-  const { services, getQueue, joinQueue, removeFromQueue } = useServices()
+  const { services } = useServices()
+
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
+  const [activeQueue, setActiveQueue] = useState<ActiveQueue | null>(null)
   const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [checkingStatus, setCheckingStatus] = useState(true)
 
   const openServices = services.filter((service) => service.status === 'open')
-  const selectedService = services.find((service) => service.id === selectedServiceId)
-  const selectedQueue = selectedServiceId ? getQueue(selectedServiceId) : []
+  const selectedService = services.find(
+    (service) => service.id === selectedServiceId,
+  )
 
-  const currentUserQueue = currentUser
-    ? services
-        .map((service) => ({
-          service,
-          queue: getQueue(service.id),
-        }))
-        .find(({ queue }) => queue.some((queueUser) => queueUser.email === currentUser.email))
-    : null
+  useEffect(() => {
+    if (!currentUser) {
+      setActiveQueue(null)
+      setCheckingStatus(false)
+      return
+    }
 
-  function handleJoin(serviceId: number) {
+    let cancelled = false
+
+    async function loadActiveQueue() {
+      setCheckingStatus(true)
+
+      for (const service of services) {
+        try {
+          const response = await getQueueStatus(service.id)
+
+          if (!cancelled) {
+            setActiveQueue({
+              serviceId: service.id,
+              entry: response.entry,
+            })
+            setSelectedServiceId(service.id)
+          }
+
+          setCheckingStatus(false)
+          return
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 404) {
+            continue
+          }
+
+          if (!cancelled) {
+            setMessage(
+              error instanceof ApiError
+                ? error.displayMessage
+                : 'Unable to check your queue status.',
+            )
+          }
+
+          setCheckingStatus(false)
+          return
+        }
+      }
+
+      if (!cancelled) {
+        setActiveQueue(null)
+        setCheckingStatus(false)
+      }
+    }
+
+    void loadActiveQueue()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, services])
+
+  async function handleJoin(serviceId: number) {
     if (!currentUser) {
       setMessage('Please log in before joining a queue.')
       return
     }
 
-    const service = services.find((s) => s.id === serviceId)
+    if (activeQueue) {
+      setMessage('You are already waiting in a queue. Leave it before joining another one.')
+      return
+    }
+
+    const service = services.find((item) => item.id === serviceId)
 
     if (!service) {
       setMessage('Please select a valid service.')
       return
     }
 
-    joinQueue(serviceId, {
-      name: currentUser.name,
-      email: currentUser.email,
-    })
+    try {
+      setLoading(true)
+      setMessage('')
 
-    setSelectedServiceId(serviceId)
-    setMessage(`You joined the ${service.name} queue.`)
+      const response = await joinQueue(serviceId)
+
+      setActiveQueue({
+        serviceId,
+        entry: response.entry,
+      })
+      setSelectedServiceId(serviceId)
+      setMessage(`You joined the ${service.name} queue.`)
+    } catch (error) {
+      setMessage(
+        error instanceof ApiError
+          ? error.displayMessage
+          : 'Unable to join the queue.',
+      )
+    } finally {
+      setLoading(false)
+    }
   }
 
-  function handleLeaveQueue() {
-    if (!currentUser || !currentUserQueue) {
+  async function handleLeaveQueue() {
+    if (!activeQueue) {
       setMessage('You are not currently in a queue.')
       return
     }
 
-    removeFromQueue(
-      currentUserQueue.service.id,
-      `${currentUserQueue.service.id}-${currentUser.email}`
-    )
+    try {
+      setLoading(true)
+      setMessage('')
 
-    setMessage('You left the queue.')
+      await leaveQueue(activeQueue.serviceId)
+
+      setActiveQueue(null)
+      setMessage('You left the queue.')
+    } catch (error) {
+      setMessage(
+        error instanceof ApiError
+          ? error.displayMessage
+          : 'Unable to leave the queue.',
+      )
+    } finally {
+      setLoading(false)
+    }
   }
+
+  const activeService = activeQueue
+    ? services.find((service) => service.id === activeQueue.serviceId)
+    : null
 
   return (
     <div>
       <div className="page-header">
         <h1>Join a queue</h1>
-        <p>Pick a service to view the estimated wait time and join the line.</p>
+        <p>Pick a service and join the live queue.</p>
       </div>
 
       {message && (
@@ -70,38 +169,59 @@ export default function JoinQueue() {
         </div>
       )}
 
-      {currentUserQueue && (
+      {checkingStatus && (
+        <div className="mb-4 rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+          Checking your current queue status...
+        </div>
+      )}
+
+      {activeQueue && activeService && (
         <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          You are currently in the {currentUserQueue.service.name} queue.
+          You are currently in the {activeService.name} queue at position #
+          {activeQueue.entry.position}. Estimated wait:{' '}
+          {activeQueue.entry.estimatedWaitMinutes} minutes.
         </div>
       )}
 
       <div className="grid gap-4 md:grid-cols-3">
         {openServices.map((service) => {
-          const queue = getQueue(service.id)
-          const estimatedWait = queue.length * service.duration
           const isSelected = selectedServiceId === service.id
+          const isCurrentQueue = activeQueue?.serviceId === service.id
 
           return (
             <div
               key={service.id}
               className={`rounded-lg border bg-white p-5 shadow-sm ${
-                isSelected ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'
+                isSelected
+                  ? 'border-blue-500 ring-2 ring-blue-100'
+                  : 'border-slate-200'
               }`}
             >
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-base font-semibold text-slate-900">{service.name}</h2>
+                <h2 className="text-base font-semibold text-slate-900">
+                  {service.name}
+                </h2>
+
                 <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium capitalize text-blue-700">
                   {service.priority}
                 </span>
               </div>
 
-              <p className="mb-4 text-sm text-slate-600">{service.description}</p>
+              <p className="mb-4 text-sm text-slate-600">
+                {service.description}
+              </p>
 
               <div className="mb-4 space-y-1 text-sm text-slate-600">
-                <p>{queue.length} people in line</p>
                 <p>{service.duration} minutes per person</p>
-                <p>{estimatedWait} minutes estimated wait</p>
+
+                {isCurrentQueue && activeQueue && (
+                  <>
+                    <p>Position #{activeQueue.entry.position}</p>
+                    <p>
+                      {activeQueue.entry.estimatedWaitMinutes} minutes estimated wait
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="flex gap-2">
@@ -116,9 +236,10 @@ export default function JoinQueue() {
                 <button
                   type="button"
                   onClick={() => handleJoin(service.id)}
-                  className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  disabled={loading || Boolean(activeQueue)}
+                  className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Join queue
+                  {isCurrentQueue ? 'Joined' : 'Join queue'}
                 </button>
               </div>
             </div>
@@ -127,22 +248,42 @@ export default function JoinQueue() {
       </div>
 
       <div className="mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="mb-2 text-base font-semibold text-slate-900">Selected service</h2>
+        <h2 className="mb-2 text-base font-semibold text-slate-900">
+          Selected service
+        </h2>
 
         {selectedService ? (
           <div className="text-sm text-slate-600">
             <p>
               <strong>Service:</strong> {selectedService.name}
             </p>
+
             <p>
-              <strong>Estimated wait:</strong>{' '}
-              {selectedQueue.length * selectedService.duration} minutes
+              <strong>Duration:</strong> {selectedService.duration} minutes per person
             </p>
+
+            {activeQueue && activeQueue.serviceId === selectedService.id && (
+              <>
+                <p>
+                  <strong>Your position:</strong> #{activeQueue.entry.position}
+                </p>
+
+                <p>
+                  <strong>Estimated wait:</strong>{' '}
+                  {activeQueue.entry.estimatedWaitMinutes} minutes
+                </p>
+              </>
+            )}
 
             <button
               type="button"
               onClick={handleLeaveQueue}
-              className="mt-4 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              disabled={
+                loading ||
+                !activeQueue ||
+                activeQueue.serviceId !== selectedService.id
+              }
+              className="mt-4 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Leave my queue
             </button>

@@ -10,6 +10,7 @@ import UserDashboard from './pages/user/UserDashboard'
 import JoinQueue from './pages/user/JoinQueue'
 import QueueStatus from './pages/user/QueueStatus'
 import History from './pages/user/History'
+import Notifications from './pages/user/Notifications'
 
 import AdminDashboard from './pages/admin/AdminDashboard'
 import ServiceManagement from './pages/admin/ServiceManagement'
@@ -28,6 +29,7 @@ function App() {
         <Route path="/join-queue" element={<JoinQueue />} />
         <Route path="/queue-status" element={<QueueStatus />} />
         <Route path="/history" element={<History />} />
+        <Route path="/notifications" element={<Notifications />} />
       </Route>
 
       <Route element={<AdminLayout />}>

@@ -9,7 +9,11 @@ const ADMIN_LINKS = [
 ]
 
 export default function AdminLayout() {
-  const { currentUser, logout } = useAuth()
+  const { currentUser, loading, logout } = useAuth()
+
+  // See UserLayout - wait for the stored token to be verified before deciding
+  // whether to redirect.
+  if (loading) return <p className="p-6 text-sm text-slate-500">Loading...</p>
 
   if (!currentUser) return <Navigate to="/" replace />
   if (currentUser.role !== 'admin') return <Navigate to="/dashboard" replace />

@@ -1,11 +1,13 @@
 import type { ReactElement } from "react";
 import { Link, NavLink } from "react-router-dom";
+import NotificationsPanel from "../../components/NotificationsPanel";
 
 const SIDEBAR_LINKS = [
   { to: "/dashboard", label: "Dashboard", icon: "🖥️", end: true },
   { to: "/join-queue", label: "Join Queue", icon: "➕" },
   { to: "/queue-status", label: "Queue Status", icon: "⏳" },
   { to: "/history", label: "History", icon: "🕧" },
+  { to: "/notifications", label: "Notifications", icon: "🔔" },
 ];
 
 function UserDashboard(): ReactElement {
@@ -51,9 +53,6 @@ function UserDashboard(): ReactElement {
                 </p>
               </NavLink>
             ))}
-            <div className="text-slate-300 py-2 px-2">
-              <p>🔔 Notifications</p>
-            </div>
             <div className="text-slate-300 py-2 px-2">
               <p>🙎🏻 Team Members</p>
             </div>
@@ -332,34 +331,7 @@ function UserDashboard(): ReactElement {
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-2xl shadow-sm px-5 py-5 space-y-5">
-              <div className="flex justify-between">
-                <div>
-                  <p className="text-blue-600 font-bold">🔔 UPDATES</p>
-                  <p className="text-slate-900 font-bold text-3xl">
-                    Notifications
-                  </p>
-                </div>
-
-                <div>
-                  <p className="bg-blue-50 text-blue-600 font-bold rounded-full px-3 py-1">
-                    3
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-5">
-                <div className="bg-blue-50 w-full rounded-2xl text-slate-600 px-2 py-2 border border-slate-200">
-                  <p>🔴 You joined the Academic Advising queue</p>
-                </div>
-                <div className="bg-blue-50 w-full rounded-2xl text-slate-600 px-2 py-2 border border-slate-200">
-                  <p>🔴 Your estimated wait time is 15 minutes</p>
-                </div>
-                <div className="bg-blue-50 w-full rounded-2xl text-slate-600 px-2 py-2 border border-slate-200">
-                  <p>🔴 You will be notified when it is your turn</p>
-                </div>
-              </div>
-            </div>
+            <NotificationsPanel />
           </div>
 
           <section className="w-[90%] max-w-6xl bg-white rounded-2xl mt-5 mb-10 border border-slate-100 shadow-sm mx-auto px-5 py-5">
