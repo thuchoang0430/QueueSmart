@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-import NotificationsPanel from "../NotificationsPanel";
+import NotificationsPanel from "./NotificationsPanel";
 
 function QueueOverview() {
   return (
