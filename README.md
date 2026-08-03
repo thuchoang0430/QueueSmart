@@ -8,6 +8,7 @@ QueueSmart is a full-stack queue management application developed for COSC. The 
 
 ### Authentication
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 - User registration
 - User login
@@ -122,6 +123,8 @@ Commit message:
 Test second time login form changes
 ```
 =======
+=======
+>>>>>>> testing1
 - User registration
 - User login
 - Role-based authorization (User/Admin)
@@ -152,7 +155,10 @@ Test second time login form changes
 - Queue participation history
 - Served history
 - Leave history
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> testing1
 
 ---
 
@@ -160,15 +166,19 @@ Test second time login form changes
 
 ### Frontend
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 >>>>>>> origin/main
+=======
+>>>>>>> testing1
 - React
 - TypeScript
 - Vite
 - Tailwind CSS
 
 ### Backend
+<<<<<<< HEAD
 <<<<<<< HEAD
 
 - Node.js
@@ -187,6 +197,8 @@ Test second time login form changes
 - GitHub Actions
 
 =======
+=======
+>>>>>>> testing1
 - Node.js
 - Express.js
 - TypeScript
@@ -194,11 +206,15 @@ Test second time login form changes
 ### Testing
 - Vitest
 
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> testing1
 ---
 
 ## Project Structure
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 ```text
 QueueSmart/
@@ -224,6 +240,8 @@ QueueSmart/
 ├── README.md
 └── package-lock.json
 =======
+=======
+>>>>>>> testing1
 ```
 QueueSmart-A2/
 │
@@ -239,7 +257,10 @@ QueueSmart-A2/
 │
 └── .github/
     └── workflows/
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> testing1
 ```
 
 ---
@@ -247,16 +268,21 @@ QueueSmart-A2/
 ## Getting Started
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 ### Clone the Repository
 =======
 ### Clone Repository
 >>>>>>> origin/main
+=======
+### Clone Repository
+>>>>>>> testing1
 
 ```bash
 git clone https://github.com/thuchoang0430/QueueSmart.git
 cd QueueSmart
 ```
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 To use the `testing1` branch:
 
@@ -266,6 +292,8 @@ git switch testing1
 
 =======
 >>>>>>> origin/main
+=======
+>>>>>>> testing1
 ---
 
 ## Backend
@@ -277,6 +305,7 @@ npm run dev
 ```
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 The backend runs on:
 
 ```text
@@ -285,6 +314,11 @@ Backend runs on:
 
 ```
 >>>>>>> origin/main
+=======
+Backend runs on:
+
+```
+>>>>>>> testing1
 http://localhost:4000
 ```
 
@@ -301,6 +335,7 @@ npm run dev
 ```
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 The frontend runs on:
 
 ```text
@@ -309,6 +344,11 @@ Frontend runs on:
 
 ```
 >>>>>>> origin/main
+=======
+Frontend runs on:
+
+```
+>>>>>>> testing1
 http://localhost:5173
 ```
 
@@ -317,10 +357,14 @@ http://localhost:5173
 ## Running Tests
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 Run the backend tests:
 =======
 Backend tests:
 >>>>>>> origin/main
+=======
+Backend tests:
+>>>>>>> testing1
 
 ```bash
 cd backend
@@ -328,10 +372,14 @@ npm test
 ```
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 Run type checking:
 =======
 Type checking:
 >>>>>>> origin/main
+=======
+Type checking:
+>>>>>>> testing1
 
 ```bash
 npm run typecheck
@@ -344,21 +392,28 @@ npm run typecheck
 ### User
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 ```text
 Email: user@test.com
 Password: password
 =======
+=======
+>>>>>>> testing1
 ```
 Email:
 user@test.com
 
 Password:
 password
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> testing1
 ```
 
 ### Administrator
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 ```text
 Email: admin@test.com
@@ -366,6 +421,8 @@ Password: password
 ```
 
 =======
+=======
+>>>>>>> testing1
 ```
 Email:
 admin@test.com
@@ -373,11 +430,15 @@ admin@test.com
 Password:
 password
 ```
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> testing1
 ---
 
 ## Notes
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 - The application includes a React frontend and an Express backend.
 - Backend APIs are consumed by the React frontend.
@@ -386,11 +447,16 @@ password
 - GitHub Pages hosts the frontend only.
 - Local development requires both the backend and frontend servers.
 =======
+=======
+>>>>>>> testing1
 - Data is stored in memory.
 - Backend APIs are consumed by the React frontend.
 - GitHub Pages hosts the frontend only.
 - Local development requires both backend and frontend servers.
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> testing1
 
 ---
 

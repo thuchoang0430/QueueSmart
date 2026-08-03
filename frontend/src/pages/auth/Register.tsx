@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import registerImage from "../../assets/register_login_image.png";
@@ -320,40 +321,19 @@ function Register() {
             </div>
           </form>
         </div>
+=======
+import RegisterBrandSection from "../../components/auth/RegisterBrandSection";
+import RegisterForm from "../../components/auth/RegisterForm";
+
+function Register() {
+  return (
+    <main className="min-h-screen bg-slate-100 p-5">
+      <div className="mx-auto grid w-full max-w-7xl gap-8 rounded-2xl border border-slate-200 bg-slate-50 px-6 py-7 shadow-lg lg:grid-cols-[0.9fr_1.1fr] lg:px-10">
+        <RegisterBrandSection />
+        <RegisterForm />
+>>>>>>> testing1
       </div>
     </main>
-  );
-}
-
-function Input({
-  label,
-  icon,
-  rightIcon,
-  placeholder,
-  type = "text",
-  value,
-  onChange,
-}: InputProps) {
-  return (
-    <div>
-      <label className="mb-2 block text-sm font-semibold text-slate-800">
-        {label}
-      </label>
-
-      <div className="flex items-center gap-4 rounded-xl border border-slate-200 px-4 py-4 text-slate-500 shadow-sm focus-within:border-purple-500">
-        {icon}
-
-        <input
-          type={type}
-          placeholder={placeholder}
-          className="w-full outline-none placeholder:text-slate-400"
-          value={value}
-          onChange={onChange}
-        />
-
-        {rightIcon && <span>{rightIcon}</span>}
-      </div>
-    </div>
   );
 }
 
