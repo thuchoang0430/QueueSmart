@@ -1,2 +1,4 @@
 node_modules/
 /QueueSmart-A2/
+backend/.env
+backend/src/generated/
