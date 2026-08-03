@@ -8,10 +8,13 @@ import {
   joinQueue,
   leaveQueue,
   listQueue,
-  serveNext as serveNextFromQueue,
+  serveNext,
 } from "./queue.service";
 
-function getAuthenticatedUserId(req: Request): number {
+// Get the current user's ID.
+// Show an unauthorized error if the user is not logged in.
+
+function getUserId(req: Request): number {
   if (!req.user) {
     throw ApiError.unauthorized("You must be signed in to access the queue.");
   }
@@ -19,15 +22,22 @@ function getAuthenticatedUserId(req: Request): number {
   return req.user.id;
 }
 
-export async function postJoinQueue(
+// Get the service ID from the URL and check if it is valid.
+
+function getServiceId(req: Request): number {
+  return parseId(String(req.params.serviceId), "Service id");
+}
+
+//  * Add the logged-in user to a service queue.
+
+export function postJoinQueue(
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> {
+): void {
   try {
-    const serviceId = parseId(String(req.params.serviceId), "Service id");
-
-    const userId = getAuthenticatedUserId(req);
+    const serviceId = getServiceId(req);
+    const userId = getUserId(req);
 
     const entry = joinQueue(serviceId, userId, req.body);
 
@@ -40,15 +50,16 @@ export async function postJoinQueue(
   }
 }
 
-export async function deleteLeaveQueue(
+//  * Remove the logged-in user from a service queue.
+
+export function deleteLeaveQueue(
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> {
+): void {
   try {
-    const serviceId = parseId(String(req.params.serviceId), "Service id");
-
-    const userId = getAuthenticatedUserId(req);
+    const serviceId = getServiceId(req);
+    const userId = getUserId(req);
 
     const entry = leaveQueue(serviceId, userId);
 
@@ -61,15 +72,16 @@ export async function deleteLeaveQueue(
   }
 }
 
-export async function getMyQueueStatus(
+//  * Return the logged-in user's current queue status.
+
+export function getMyQueueStatus(
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> {
+): void {
   try {
-    const serviceId = parseId(String(req.params.serviceId), "Service id");
-
-    const userId = getAuthenticatedUserId(req);
+    const serviceId = getServiceId(req);
+    const userId = getUserId(req);
 
     const entry = getUserQueueStatus(serviceId, userId);
 
@@ -81,14 +93,13 @@ export async function getMyQueueStatus(
   }
 }
 
-export async function getQueue(
+export function getQueue(
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> {
+): void {
   try {
-    const serviceId = parseId(String(req.params.serviceId), "Service id");
-
+    const serviceId = getServiceId(req);
     const queue = listQueue(serviceId);
 
     res.json({
@@ -100,15 +111,17 @@ export async function getQueue(
   }
 }
 
-export async function postServeNext(
+//  * Remove the next person from the waiting queue
+//  * and mark that person as being served.
+
+export function postServeNext(
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> {
+): void {
   try {
-    const serviceId = parseId(String(req.params.serviceId), "Service id");
-
-    const servedEntry = serveNextFromQueue(serviceId);
+    const serviceId = getServiceId(req);
+    const servedEntry = serveNext(serviceId);
 
     res.json({
       message: `${servedEntry.name} is now being served.`,
