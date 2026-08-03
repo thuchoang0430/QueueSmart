@@ -22,14 +22,17 @@ export const joinQueueSchema: Schema = {
 export interface JoinQueueInput {
   priority?: EntryPriority;
 }
-
+// Ngoc Nguyen's work
+// This file handles the service queue.
+// It can add users, remove users, show the queue,
+// check the user's position, and serve the next user.
 export interface QueueEntryWithWaitTime extends QueueEntry {
   position: number;
   estimatedWaitMinutes: number;
 }
 
-function findService(serviceId: number): Service {
-  const service = store.services.find((item) => item.id === serviceId);
+function getServiceById(serviceId: number): Service {
+  const service = store.services.find((service) => service.id === serviceId);
 
   if (!service) {
     throw ApiError.notFound(`No service found with id ${serviceId}.`);
@@ -38,38 +41,56 @@ function findService(serviceId: number): Service {
   return service;
 }
 
+function getUserById(userId: number) {
+  const user = store.users.find((user) => user.id === userId);
+
+  if (!user) {
+    throw ApiError.notFound(`No user found with id ${userId}.`);
+  }
+
+  return user;
+}
+
+function getQueueEntryIndex(serviceId: number, userId: number): number {
+  return store.queueEntries.findIndex(
+    (entry) => entry.serviceId === serviceId && entry.userId === userId,
+  );
+}
+
 export function estimateWaitTime(
   position: number,
-  expectedDuration: number,
+  serviceDuration: number,
 ): number {
-  return position * expectedDuration;
+  return position * serviceDuration;
 }
 
 export function compareQueueEntries(
-  firstEntry: QueueEntry,
-  secondEntry: QueueEntry,
+  first: QueueEntry,
+  second: QueueEntry,
 ): number {
-  if (firstEntry.priority !== secondEntry.priority) {
-    return firstEntry.priority === "priority" ? -1 : 1;
+  if (first.priority !== second.priority) {
+    if (first.priority === "priority") {
+      return -1;
+    }
+
+    return 1;
   }
 
-  const arrivalDifference = firstEntry.joinedAt - secondEntry.joinedAt;
-
-  if (arrivalDifference !== 0) {
-    return arrivalDifference;
+  if (first.joinedAt !== second.joinedAt) {
+    return first.joinedAt - second.joinedAt;
   }
 
-  return firstEntry.id - secondEntry.id;
+  return first.id - second.id;
 }
 
 export function listQueue(serviceId: number): QueueEntryWithWaitTime[] {
-  const service = findService(serviceId);
+  const service = getServiceById(serviceId);
 
-  const orderedQueue = store.queueEntries
+  const queueEntries = store.queueEntries
     .filter((entry) => entry.serviceId === serviceId)
     .sort(compareQueueEntries);
 
-  return orderedQueue.map((entry, index) => {
+  return queueEntries.map((entry, index) => {
     const position = index + 1;
 
     return {
@@ -79,32 +100,26 @@ export function listQueue(serviceId: number): QueueEntryWithWaitTime[] {
     };
   });
 }
-
 export function joinQueue(
   serviceId: number,
   userId: number,
   input: unknown = {},
 ): QueueEntryWithWaitTime {
-  validateOrThrow(input ?? {}, joinQueueSchema);
+  const requestData = input ?? {};
 
-  const data = (input ?? {}) as JoinQueueInput;
-  const service = findService(serviceId);
+  validateOrThrow(requestData, joinQueueSchema);
+
+  const data = requestData as JoinQueueInput;
+  const service = getServiceById(serviceId);
+  const user = getUserById(userId);
 
   if (service.status !== "open") {
     throw ApiError.conflict(`${service.name} is currently closed.`);
   }
 
-  const user = store.users.find((item) => item.id === userId);
+  const existingEntryIndex = getQueueEntryIndex(serviceId, userId);
 
-  if (!user) {
-    throw ApiError.notFound(`No user found with id ${userId}.`);
-  }
-
-  const existingEntry = store.queueEntries.find(
-    (entry) => entry.serviceId === serviceId && entry.userId === userId,
-  );
-
-  if (existingEntry) {
+  if (existingEntryIndex !== -1) {
     throw ApiError.conflict("You are already waiting in this queue.");
   }
 
@@ -120,9 +135,9 @@ export function joinQueue(
 
   store.queueEntries.push(newEntry);
 
-  const joinedEntry = listQueue(serviceId).find(
-    (entry) => entry.id === newEntry.id,
-  );
+  const updatedQueue = listQueue(serviceId);
+
+  const joinedEntry = updatedQueue.find((entry) => entry.id === newEntry.id);
 
   if (!joinedEntry) {
     throw new Error("The new queue entry could not be found.");
@@ -132,19 +147,15 @@ export function joinQueue(
 }
 
 export function leaveQueue(serviceId: number, userId: number): QueueEntry {
-  findService(serviceId);
+  getServiceById(serviceId);
 
-  const entryIndex = store.queueEntries.findIndex(
-    (entry) => entry.serviceId === serviceId && entry.userId === userId,
-  );
+  const entryIndex = getQueueEntryIndex(serviceId, userId);
 
   if (entryIndex === -1) {
     throw ApiError.notFound("You are not currently waiting in this queue.");
   }
 
-  const removedEntries = store.queueEntries.splice(entryIndex, 1);
-
-  const removedEntry = removedEntries[0];
+  const removedEntry = store.queueEntries.splice(entryIndex, 1)[0];
 
   if (!removedEntry) {
     throw new Error("The queue entry could not be removed.");
@@ -159,25 +170,25 @@ export function getUserQueueStatus(
 ): QueueEntryWithWaitTime {
   const queue = listQueue(serviceId);
 
-  const entry = queue.find((item) => item.userId === userId);
+  const userEntry = queue.find((entry) => entry.userId === userId);
 
-  if (!entry) {
+  if (!userEntry) {
     throw ApiError.notFound("You are not currently waiting in this queue.");
   }
 
-  return entry;
+  return userEntry;
 }
 
 export function serveNext(serviceId: number): QueueEntryWithWaitTime {
   const queue = listQueue(serviceId);
-  const nextUser = queue[0];
+  const nextEntry = queue[0];
 
-  if (!nextUser) {
+  if (!nextEntry) {
     throw ApiError.notFound("There is nobody waiting in this queue.");
   }
 
   const entryIndex = store.queueEntries.findIndex(
-    (entry) => entry.id === nextUser.id,
+    (entry) => entry.id === nextEntry.id,
   );
 
   if (entryIndex === -1) {
@@ -186,5 +197,5 @@ export function serveNext(serviceId: number): QueueEntryWithWaitTime {
 
   store.queueEntries.splice(entryIndex, 1);
 
-  return nextUser;
+  return nextEntry;
 }
