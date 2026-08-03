@@ -12,19 +12,22 @@ import {
 
 const router = Router();
 
-router.post("/:serviceId/join", requireAuth, postJoinQueue);
+// Middleware for every signed-in user.
+const authenticated = [requireAuth];
 
-router.delete("/:serviceId/leave", requireAuth, deleteLeaveQueue);
+// Middleware for admin-only routes.
+const adminOnly = [requireAuth, requireRole("admin")];
 
-router.get("/:serviceId/status", requireAuth, getMyQueueStatus);
+// User
+router.post("/:serviceId/join", ...authenticated, postJoinQueue);
 
-router.get("/:serviceId", requireAuth, requireRole("admin"), getQueue);
+router.delete("/:serviceId/leave", ...authenticated, deleteLeaveQueue);
 
-router.post(
-  "/:serviceId/serve",
-  requireAuth,
-  requireRole("admin"),
-  postServeNext,
-);
+router.get("/:serviceId/status", ...authenticated, getMyQueueStatus);
+
+// Admin
+router.get("/:serviceId", ...adminOnly, getQueue);
+
+router.post("/:serviceId/serve", ...adminOnly, postServeNext);
 
 export default router;
