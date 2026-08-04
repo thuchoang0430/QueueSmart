@@ -1,31 +1,87 @@
 import request from 'supertest'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../src/app'
+import { prisma } from '../src/db'
 import { resetStore } from '../src/store/memoryStore'
 import { adminToken, bearer } from './helpers'
 
 const app = createApp()
 
+async function resetServiceTables(): Promise<void> {
+  await prisma.queueEntry.deleteMany()
+  await prisma.queue.deleteMany()
+  await prisma.service.deleteMany()
+
+  await prisma.service.create({
+    data: {
+      name: 'Academic Advising',
+      description: 'General academic guidance and course planning for students.',
+      expectedDuration: 20,
+      priorityLevel: 2,
+      queues: { create: { status: 'OPEN' } },
+    },
+  })
+
+  await prisma.service.create({
+    data: {
+      name: 'Financial Aid',
+      description: 'Assistance with financial aid applications and questions.',
+      expectedDuration: 30,
+      priorityLevel: 3,
+      queues: { create: { status: 'OPEN' } },
+    },
+  })
+
+  await prisma.service.create({
+    data: {
+      name: 'IT Help Desk',
+      description: 'Technical support for student accounts, devices, and campus wifi.',
+      expectedDuration: 15,
+      priorityLevel: 1,
+      queues: { create: { status: 'OPEN' } },
+    },
+  })
+}
+
 describe('Service Management API', () => {
   let authorization: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     resetStore()
+    await resetServiceTables()
     authorization = bearer(adminToken())
   })
 
-  it('lists the seeded services', async () => {
+  afterAll(async () => {
+    await prisma.$disconnect()
+  })
+
+  it('lists the seeded services from the database', async () => {
     const res = await request(app).get('/api/services').expect(200)
 
     expect(res.body.services).toHaveLength(3)
     expect(res.body.services[0]).toMatchObject({
-      id: 1,
+      name: 'Academic Advising',
+      duration: 20,
+      priority: 'medium',
+      status: 'open',
+    })
+  })
+
+  it('gets one service by id', async () => {
+    const listRes = await request(app).get('/api/services').expect(200)
+    const serviceId = listRes.body.services[0].id
+
+    const res = await request(app).get(`/api/services/${serviceId}`).expect(200)
+
+    expect(res.body.service).toMatchObject({
+      id: serviceId,
       name: 'Academic Advising',
       status: 'open',
     })
   })
 
-  it('creates a new service with valid input', async () => {
+  it('creates a new service with a database queue', async () => {
     const res = await request(app)
       .post('/api/services')
       .set('Authorization', authorization)
@@ -38,13 +94,18 @@ describe('Service Management API', () => {
       .expect(201)
 
     expect(res.body.service).toMatchObject({
-      id: 4,
       name: 'Career Services',
       description: 'Resume, interview, and career support for students.',
       duration: 25,
       priority: 'medium',
       status: 'open',
     })
+
+    const createdQueue = await prisma.queue.findFirst({
+      where: { serviceId: res.body.service.id },
+    })
+
+    expect(createdQueue?.status).toBe('OPEN')
   })
 
   it('rejects create service requests with missing required fields', async () => {
@@ -98,9 +159,12 @@ describe('Service Management API', () => {
     expect(res.body.error.code).toBe('CONFLICT')
   })
 
-  it('updates an existing service', async () => {
+  it('updates an existing service in the database', async () => {
+    const listRes = await request(app).get('/api/services').expect(200)
+    const serviceId = listRes.body.services[0].id
+
     const res = await request(app)
-      .put('/api/services/1')
+      .put(`/api/services/${serviceId}`)
       .set('Authorization', authorization)
       .send({
         name: 'Updated Advising',
@@ -111,18 +175,22 @@ describe('Service Management API', () => {
       .expect(200)
 
     expect(res.body.service).toMatchObject({
-      id: 1,
+      id: serviceId,
       name: 'Updated Advising',
       description: 'Updated academic advising description.',
       duration: 35,
       priority: 'high',
       status: 'open',
     })
+
+    const saved = await prisma.service.findUnique({ where: { id: serviceId } })
+    expect(saved?.expectedDuration).toBe(35)
+    expect(saved?.priorityLevel).toBe(3)
   })
 
   it('returns 404 when updating a service that does not exist', async () => {
     const res = await request(app)
-      .put('/api/services/999')
+      .put('/api/services/999999')
       .set('Authorization', authorization)
       .send({
         name: 'Missing Service',
@@ -135,17 +203,23 @@ describe('Service Management API', () => {
     expect(res.body.error.code).toBe('NOT_FOUND')
   })
 
-  it('opens and closes a service status', async () => {
+  it('opens and closes a service queue status in the database', async () => {
+    const listRes = await request(app).get('/api/services').expect(200)
+    const serviceId = listRes.body.services[0].id
+
     const closeRes = await request(app)
-      .patch('/api/services/1/status')
+      .patch(`/api/services/${serviceId}/status`)
       .set('Authorization', authorization)
       .send({ status: 'closed' })
       .expect(200)
 
     expect(closeRes.body.service.status).toBe('closed')
 
+    const closedQueue = await prisma.queue.findFirst({ where: { serviceId } })
+    expect(closedQueue?.status).toBe('CLOSED')
+
     const openRes = await request(app)
-      .patch('/api/services/1/status')
+      .patch(`/api/services/${serviceId}/status`)
       .set('Authorization', authorization)
       .send({ status: 'open' })
       .expect(200)
@@ -154,8 +228,11 @@ describe('Service Management API', () => {
   })
 
   it('rejects invalid service status values', async () => {
+    const listRes = await request(app).get('/api/services').expect(200)
+    const serviceId = listRes.body.services[0].id
+
     const res = await request(app)
-      .patch('/api/services/1/status')
+      .patch(`/api/services/${serviceId}/status`)
       .set('Authorization', authorization)
       .send({ status: 'paused' })
       .expect(400)
@@ -164,5 +241,23 @@ describe('Service Management API', () => {
     expect(res.body.error.fields.status).toBe(
       'Service status must be one of: open, closed.'
     )
+  })
+
+  it('deletes a service and its related queue', async () => {
+    const listRes = await request(app).get('/api/services').expect(200)
+    const serviceId = listRes.body.services[0].id
+
+    const res = await request(app)
+      .delete(`/api/services/${serviceId}`)
+      .set('Authorization', authorization)
+      .expect(200)
+
+    expect(res.body.service.id).toBe(serviceId)
+
+    const deletedService = await prisma.service.findUnique({ where: { id: serviceId } })
+    const deletedQueue = await prisma.queue.findFirst({ where: { serviceId } })
+
+    expect(deletedService).toBeNull()
+    expect(deletedQueue).toBeNull()
   })
 })
