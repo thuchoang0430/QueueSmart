@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express'
 import { parseId } from '../../validation/validators'
 import {
   createService,
+  deleteService,
   getServiceById,
   listServices,
   updateService,
@@ -14,7 +15,7 @@ import {
 
 export async function getServices(_req: Request, res: Response, next: NextFunction) {
   try {
-    res.json({ services: listServices() })
+    res.json({ services: await listServices() })
   } catch (err) {
     next(err)
   }
@@ -23,7 +24,7 @@ export async function getServices(_req: Request, res: Response, next: NextFuncti
 export async function getService(req: Request, res: Response, next: NextFunction) {
   try {
     const id = parseId(String(req.params.id), 'Service id')
-    res.json({ service: getServiceById(id) })
+    res.json({ service: await getServiceById(id) })
   } catch (err) {
     next(err)
   }
@@ -31,7 +32,7 @@ export async function getService(req: Request, res: Response, next: NextFunction
 
 export async function postService(req: Request, res: Response, next: NextFunction) {
   try {
-    const service = createService(req.body)
+    const service = await createService(req.body)
     res.status(201).json({ service })
   } catch (err) {
     next(err)
@@ -41,7 +42,7 @@ export async function postService(req: Request, res: Response, next: NextFunctio
 export async function putService(req: Request, res: Response, next: NextFunction) {
   try {
     const id = parseId(String(req.params.id), 'Service id')
-    const service = updateService(id, req.body)
+    const service = await updateService(id, req.body)
     res.json({ service })
   } catch (err) {
     next(err)
@@ -51,7 +52,17 @@ export async function putService(req: Request, res: Response, next: NextFunction
 export async function patchServiceStatus(req: Request, res: Response, next: NextFunction) {
   try {
     const id = parseId(String(req.params.id), 'Service id')
-    const service = updateServiceStatus(id, req.body)
+    const service = await updateServiceStatus(id, req.body)
+    res.json({ service })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function deleteServiceById(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = parseId(String(req.params.id), 'Service id')
+    const service = await deleteService(id)
     res.json({ service })
   } catch (err) {
     next(err)
