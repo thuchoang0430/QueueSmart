@@ -1,14 +1,23 @@
 import request from 'supertest'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../src/app'
+import { clearSessions } from '../src/modules/auth/auth.service'
 import { resetStore } from '../src/store/memoryStore'
+import { disconnectDb, resetUsers } from './db'
 import { bearer, userToken } from './helpers'
 
 const app = createApp()
 
-beforeEach(() => {
+beforeEach(async () => {
+  // resetStore() keeps the in-memory services seeded for the role-guard tests;
+  // resetUsers() and clearSessions() reset the database and sessions the auth
+  // endpoints rely on.
   resetStore()
+  clearSessions()
+  await resetUsers()
 })
+
+afterAll(disconnectDb)
 
 describe('POST /api/auth/register', () => {
   const validSignup = { name: 'Andy Do', email: 'andy@test.edu', password: 'password123' }

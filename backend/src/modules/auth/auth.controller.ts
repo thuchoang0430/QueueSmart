@@ -1,10 +1,10 @@
 import type { NextFunction, Request, Response } from 'express'
 import { extractToken } from '../../middleware/auth'
-import { login, logout, register, toPublicUser } from './auth.service'
+import { login, logout, register } from './auth.service'
 
 export async function postRegister(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(201).json(register(req.body))
+    res.status(201).json(await register(req.body))
   } catch (err) {
     next(err)
   }
@@ -12,7 +12,7 @@ export async function postRegister(req: Request, res: Response, next: NextFuncti
 
 export async function postLogin(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json(login(req.body))
+    res.json(await login(req.body))
   } catch (err) {
     next(err)
   }
@@ -24,8 +24,9 @@ export async function postLogin(req: Request, res: Response, next: NextFunction)
  */
 export async function getMe(req: Request, res: Response, next: NextFunction) {
   try {
-    // requireAuth guarantees req.user is set before this runs.
-    res.json({ user: toPublicUser(req.user!) })
+    // requireAuth guarantees req.user is set before this runs, and it is already
+    // the public shape, so it can be returned as-is.
+    res.json({ user: req.user })
   } catch (err) {
     next(err)
   }

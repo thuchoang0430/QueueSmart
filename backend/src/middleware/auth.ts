@@ -1,7 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import { ApiError } from '../errors'
-import { getUserByToken } from '../modules/auth/auth.service'
-import type { Role, User } from '../store/memoryStore'
+import { getUserByToken, type AppRole, type PublicUser } from '../modules/auth/auth.service'
 
 // Adds `req.user` to Express's Request type so routes behind requireAuth can
 // read the caller without casting.
@@ -9,7 +8,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
-      user?: User
+      user?: PublicUser
     }
   }
 }
@@ -43,7 +42,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
  * 401 vs 403 matters here - 401 means "we do not know who you are", 403 means
  * "we know, and you are not allowed".
  */
-export function requireRole(role: Role): RequestHandler {
+export function requireRole(role: AppRole): RequestHandler {
   return (req, _res, next) => {
     if (!req.user) {
       next(ApiError.unauthorized('You must be signed in to do that.'))
