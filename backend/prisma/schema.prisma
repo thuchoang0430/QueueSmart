@@ -23,6 +23,12 @@ enum QueueEntryStatus {
   CANCELED
 }
 
+// Added for QueueEntry ordering
+enum QueueEntryPriority {
+  NORMAL
+  PRIORITY
+}
+
 enum NotificationStatus {
   SENT
   VIEWED
@@ -47,7 +53,10 @@ model UserProfile {
   preferences String?
 
   credentialId Int            @unique
-  credential   UserCredential @relation(fields: [credentialId], references: [id])
+  credential   UserCredential @relation(
+    fields: [credentialId],
+    references: [id]
+  )
 }
 
 model Service {
@@ -66,22 +75,38 @@ model Queue {
   createdAt DateTime    @default(now())
 
   serviceId Int
-  service   Service @relation(fields: [serviceId], references: [id])
+  service   Service @relation(
+    fields: [serviceId],
+    references: [id]
+  )
 
   entries QueueEntry[]
 }
 
 model QueueEntry {
-  id       Int              @id @default(autoincrement())
+  id       Int                @id @default(autoincrement())
   position Int
-  joinTime DateTime         @default(now())
-  status   QueueEntryStatus @default(WAITING)
+  joinTime DateTime           @default(now())
+  status   QueueEntryStatus   @default(WAITING)
+
+  // Added for normal/priority ordering
+  priority QueueEntryPriority @default(NORMAL)
 
   queueId Int
-  queue   Queue @relation(fields: [queueId], references: [id])
+  queue   Queue @relation(
+    fields: [queueId],
+    references: [id]
+  )
 
   userId Int
-  user   UserCredential @relation(fields: [userId], references: [id])
+  user   UserCredential @relation(
+    fields: [userId],
+    references: [id]
+  )
+
+  @@index([queueId, status])
+  @@index([queueId, priority, joinTime])
+  @@index([userId, status])
 }
 
 model Notification {
@@ -91,5 +116,8 @@ model Notification {
   status    NotificationStatus @default(SENT)
 
   userId Int
-  user   UserCredential @relation(fields: [userId], references: [id])
+  user   UserCredential @relation(
+    fields: [userId],
+    references: [id]
+  )
 }
