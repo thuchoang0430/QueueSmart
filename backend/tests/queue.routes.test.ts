@@ -1,35 +1,113 @@
 import request from "supertest";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
+import {
+  QueueEntryStatus,
+  QueueStatus,
+  UserRole,
+} from "../src/generated/prisma/client";
 import { createApp } from "../src/app";
+import { prisma } from "../src/database/prisma";
 import { resetStore } from "../src/store/memoryStore";
 import { adminToken, bearer, userToken } from "./helpers";
 
 const app = createApp();
 
-beforeEach(() => {
+let serviceId: number;
+let queueId: number;
+
+async function clearTestData(): Promise<void> {
+  await prisma.queueEntry.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.queue.deleteMany();
+  await prisma.service.deleteMany();
+  await prisma.userProfile.deleteMany();
+  await prisma.userCredential.deleteMany();
+}
+
+beforeEach(async () => {
   resetStore();
+
+  await clearTestData();
+
+  await prisma.userCredential.create({
+    data: {
+      id: 1,
+      email: "user@test.com",
+      passwordHash: "hashed-password",
+      role: UserRole.USER,
+      profile: {
+        create: {
+          fullName: "Student User",
+          email: "user@test.com",
+        },
+      },
+    },
+  });
+
+  await prisma.userCredential.create({
+    data: {
+      id: 2,
+      email: "admin@test.com",
+      passwordHash: "hashed-password",
+      role: UserRole.ADMIN,
+      profile: {
+        create: {
+          fullName: "Admin User",
+          email: "admin@test.com",
+        },
+      },
+    },
+  });
+
+  const service = await prisma.service.create({
+    data: {
+      name: "Academic Advising",
+      description: "Academic advising and course planning.",
+      expectedDuration: 20,
+      priorityLevel: 2,
+    },
+  });
+
+  const queue = await prisma.queue.create({
+    data: {
+      serviceId: service.id,
+      status: QueueStatus.OPEN,
+    },
+  });
+
+  serviceId = service.id;
+  queueId = queue.id;
+});
+
+afterAll(async () => {
+  await clearTestData();
+  await prisma.$disconnect();
 });
 
 describe("POST /api/queues/:serviceId/join", () => {
   it("allows an authenticated user to join", async () => {
     const response = await request(app)
-      .post("/api/queues/1/join")
+      .post(`/api/queues/${serviceId}/join`)
       .set("Authorization", bearer(userToken()))
-      .send({ priority: "normal" });
+      .send({
+        priority: "normal",
+      });
 
     expect(response.status).toBe(201);
+
     expect(response.body.entry).toMatchObject({
       userId: 1,
-      serviceId: 1,
+      queueId,
       position: 1,
+      status: QueueEntryStatus.WAITING,
       estimatedWaitMinutes: 0,
     });
   });
 
   it("returns 401 without authentication", async () => {
     const response = await request(app)
-      .post("/api/queues/1/join")
+      .post(`/api/queues/${serviceId}/join`)
       .send({});
 
     expect(response.status).toBe(401);
@@ -37,12 +115,12 @@ describe("POST /api/queues/:serviceId/join", () => {
 
   it("returns 409 when joining twice", async () => {
     await request(app)
-      .post("/api/queues/1/join")
+      .post(`/api/queues/${serviceId}/join`)
       .set("Authorization", bearer(userToken()))
       .send({});
 
     const response = await request(app)
-      .post("/api/queues/1/join")
+      .post(`/api/queues/${serviceId}/join`)
       .set("Authorization", bearer(userToken()))
       .send({});
 
@@ -51,8 +129,9 @@ describe("POST /api/queues/:serviceId/join", () => {
 
   it("returns 404 for an unknown service", async () => {
     const response = await request(app)
-      .post("/api/queues/999/join")
-      .set("Authorization", bearer(userToken()));
+      .post("/api/queues/999999/join")
+      .set("Authorization", bearer(userToken()))
+      .send({});
 
     expect(response.status).toBe(404);
   });
@@ -61,50 +140,56 @@ describe("POST /api/queues/:serviceId/join", () => {
 describe("GET /api/queues/:serviceId/status", () => {
   it("returns the user's queue status", async () => {
     await request(app)
-      .post("/api/queues/1/join")
-      .set("Authorization", bearer(userToken()));
+      .post(`/api/queues/${serviceId}/join`)
+      .set("Authorization", bearer(userToken()))
+      .send({});
 
     const response = await request(app)
-      .get("/api/queues/1/status")
+      .get(`/api/queues/${serviceId}/status`)
       .set("Authorization", bearer(userToken()));
 
     expect(response.status).toBe(200);
     expect(response.body.entry.position).toBe(1);
+    expect(response.body.entry.userId).toBe(1);
   });
 });
 
 describe("DELETE /api/queues/:serviceId/leave", () => {
   it("allows a user to leave", async () => {
     await request(app)
-      .post("/api/queues/1/join")
-      .set("Authorization", bearer(userToken()));
+      .post(`/api/queues/${serviceId}/join`)
+      .set("Authorization", bearer(userToken()))
+      .send({});
 
     const response = await request(app)
-      .delete("/api/queues/1/leave")
+      .delete(`/api/queues/${serviceId}/leave`)
       .set("Authorization", bearer(userToken()));
 
     expect(response.status).toBe(200);
     expect(response.body.entry.userId).toBe(1);
+    expect(response.body.entry.status).toBe(QueueEntryStatus.CANCELED);
   });
 });
 
 describe("GET /api/queues/:serviceId", () => {
   it("allows an admin to view the queue", async () => {
     await request(app)
-      .post("/api/queues/1/join")
-      .set("Authorization", bearer(userToken()));
+      .post(`/api/queues/${serviceId}/join`)
+      .set("Authorization", bearer(userToken()))
+      .send({});
 
     const response = await request(app)
-      .get("/api/queues/1")
+      .get(`/api/queues/${serviceId}`)
       .set("Authorization", bearer(adminToken()));
 
     expect(response.status).toBe(200);
     expect(response.body.total).toBe(1);
+    expect(response.body.queue[0].userId).toBe(1);
   });
 
   it("returns 403 for a normal user", async () => {
     const response = await request(app)
-      .get("/api/queues/1")
+      .get(`/api/queues/${serviceId}`)
       .set("Authorization", bearer(userToken()));
 
     expect(response.status).toBe(403);
@@ -114,20 +199,22 @@ describe("GET /api/queues/:serviceId", () => {
 describe("POST /api/queues/:serviceId/serve", () => {
   it("allows an admin to serve the next user", async () => {
     await request(app)
-      .post("/api/queues/1/join")
-      .set("Authorization", bearer(userToken()));
+      .post(`/api/queues/${serviceId}/join`)
+      .set("Authorization", bearer(userToken()))
+      .send({});
 
     const response = await request(app)
-      .post("/api/queues/1/serve")
+      .post(`/api/queues/${serviceId}/serve`)
       .set("Authorization", bearer(adminToken()));
 
     expect(response.status).toBe(200);
     expect(response.body.servedEntry.userId).toBe(1);
+    expect(response.body.servedEntry.status).toBe(QueueEntryStatus.SERVED);
   });
 
   it("returns 404 when the queue is empty", async () => {
     const response = await request(app)
-      .post("/api/queues/1/serve")
+      .post(`/api/queues/${serviceId}/serve`)
       .set("Authorization", bearer(adminToken()));
 
     expect(response.status).toBe(404);
