@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { requireAuth, requireRole } from '../../middleware/auth'
 import {
+  deleteServiceById,
   getService,
   getServices,
   patchServiceStatus,
@@ -23,5 +24,6 @@ router.patch(
   requireRole('admin'),
   patchServiceStatus
 )
+router.delete('/:id', requireAuth, requireRole('admin'), deleteServiceById)
 
 export default router
