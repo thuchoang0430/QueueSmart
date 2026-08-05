@@ -1,5 +1,5 @@
 import { ApiError } from '../../errors'
-import { prisma } from '../../db'
+import { prisma } from '../../database/prisma'
 import { validateOrThrow, type Schema } from '../../validation/validators'
 
 // A4 Service Management database integration.

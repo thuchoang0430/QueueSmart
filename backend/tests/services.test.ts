@@ -1,7 +1,7 @@
 import request from 'supertest'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../src/app'
-import { prisma } from '../src/db'
+import { prisma } from '../src/database/prisma'
 import { resetStore } from '../src/store/memoryStore'
 import { adminToken, bearer } from './helpers'
 
