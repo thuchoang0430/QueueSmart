@@ -1,5 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
-
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  QueueEntryPriority,
+  QueueEntryStatus,
+  QueueStatus,
+  UserRole,
+} from "../src/generated/prisma/client";
+import { prisma } from "../src/database/prisma";
 import {
   estimateWaitTime,
   getUserQueueStatus,
@@ -8,156 +14,269 @@ import {
   listQueue,
   serveNext,
 } from "../src/modules/queues/queue.service";
-import { resetStore, store } from "../src/store/memoryStore";
 
-beforeEach(() => {
-  resetStore();
+let serviceId: number;
+let queueId: number;
+let firstUserId: number;
+let secondUserId: number;
+
+async function clearTestData(): Promise<void> {
+  await prisma.queueEntry.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.queue.deleteMany();
+  await prisma.service.deleteMany();
+  await prisma.userProfile.deleteMany();
+  await prisma.userCredential.deleteMany();
+}
+
+beforeEach(async () => {
+  await clearTestData();
+
+  const firstUser = await prisma.userCredential.create({
+    data: {
+      email: "queue-user-one@test.com",
+      passwordHash: "hashed-password",
+      role: UserRole.USER,
+      profile: {
+        create: {
+          fullName: "Queue User One",
+          email: "queue-user-one@test.com",
+        },
+      },
+    },
+  });
+
+  const secondUser = await prisma.userCredential.create({
+    data: {
+      email: "queue-user-two@test.com",
+      passwordHash: "hashed-password",
+      role: UserRole.USER,
+      profile: {
+        create: {
+          fullName: "Queue User Two",
+          email: "queue-user-two@test.com",
+        },
+      },
+    },
+  });
+
+  const service = await prisma.service.create({
+    data: {
+      name: "Academic Advising",
+      description: "Meet with an academic advisor.",
+      expectedDuration: 20,
+      priorityLevel: 1,
+    },
+  });
+
+  const queue = await prisma.queue.create({
+    data: {
+      serviceId: service.id,
+      status: QueueStatus.OPEN,
+    },
+  });
+
+  firstUserId = firstUser.id;
+  secondUserId = secondUser.id;
+  serviceId = service.id;
+  queueId = queue.id;
+});
+
+afterAll(async () => {
+  await clearTestData();
+  await prisma.$disconnect();
 });
 
 describe("estimateWaitTime", () => {
-  it("returns zero for the first person", () => {
+  it("returns zero for the first user", () => {
     expect(estimateWaitTime(1, 20)).toBe(0);
   });
 
-  it("returns one service duration for the second person", () => {
+  it("returns one service duration for the second user", () => {
     expect(estimateWaitTime(2, 20)).toBe(20);
   });
 
-  it("never returns a negative value", () => {
+  it("does not return a negative wait time", () => {
     expect(estimateWaitTime(0, 20)).toBe(0);
   });
 });
 
 describe("joinQueue", () => {
-  it("adds a user to an open service queue", () => {
-    const entry = joinQueue(1, 1);
+  it("persists a user in an open queue", async () => {
+    const result = await joinQueue(queueId, firstUserId);
 
-    expect(entry.userId).toBe(1);
-    expect(entry.serviceId).toBe(1);
-    expect(entry.position).toBe(1);
-    expect(entry.estimatedWaitMinutes).toBe(0);
-    expect(store.queueEntries).toHaveLength(1);
-  });
+    expect(result.userId).toBe(firstUserId);
+    expect(result.queueId).toBe(queueId);
+    expect(result.position).toBe(1);
+    expect(result.status).toBe(QueueEntryStatus.WAITING);
+    expect(result.estimatedWaitMinutes).toBe(0);
 
-  it("creates a joined notification", () => {
-    const initialCount = store.notifications.length;
-
-    joinQueue(1, 1);
-
-    expect(store.notifications).toHaveLength(initialCount + 1);
-    expect(store.notifications.at(-1)).toMatchObject({
-      userId: 1,
-      type: "joined",
+    const savedEntry = await prisma.queueEntry.findFirst({
+      where: {
+        queueId,
+        userId: firstUserId,
+      },
     });
+
+    expect(savedEntry).not.toBeNull();
   });
 
-  it("prevents joining the same queue twice", () => {
-    joinQueue(1, 1);
+  it("prevents duplicate waiting entries", async () => {
+    await joinQueue(queueId, firstUserId);
 
-    expect(() => joinQueue(1, 1)).toThrow(
+    await expect(joinQueue(queueId, firstUserId)).rejects.toThrow(
       "You are already waiting in this queue.",
     );
   });
 
-  it("rejects joining a closed service", () => {
-    const service = store.services.find((item) => item.id === 1);
+  it("rejects joining a closed queue", async () => {
+    await prisma.queue.update({
+      where: {
+        id: queueId,
+      },
+      data: {
+        status: QueueStatus.CLOSED,
+      },
+    });
 
-    if (!service) {
-      throw new Error("Seeded service was not found.");
-    }
-
-    service.status = "closed";
-
-    expect(() => joinQueue(1, 1)).toThrow(
-      "Academic Advising is currently closed.",
+    await expect(joinQueue(queueId, firstUserId)).rejects.toThrow(
+      "Academic Advising queue is currently closed.",
     );
+  });
+
+  it("rejects an unknown user", async () => {
+    await expect(joinQueue(queueId, 999999)).rejects.toThrow("No user found");
   });
 });
 
 describe("queue ordering", () => {
-  it("puts priority entries before normal entries", () => {
-    joinQueue(1, 1, { priority: "normal" });
-    joinQueue(1, 2, { priority: "priority" });
+  it("places priority users before normal users", async () => {
+    await joinQueue(queueId, firstUserId, {
+      priority: "normal",
+    });
 
-    const queue = listQueue(1);
+    await joinQueue(queueId, secondUserId, {
+      priority: "priority",
+    });
 
-    expect(queue[0]?.userId).toBe(2);
-    expect(queue[1]?.userId).toBe(1);
+    const queue = await listQueue(queueId);
+
+    expect(queue).toHaveLength(2);
+    expect(queue[0]?.userId).toBe(secondUserId);
+    expect(queue[0]?.priority).toBe(QueueEntryPriority.PRIORITY);
+    expect(queue[0]?.position).toBe(1);
+    expect(queue[1]?.userId).toBe(firstUserId);
+    expect(queue[1]?.position).toBe(2);
+  });
+
+  it("orders users with the same priority by join time", async () => {
+    await joinQueue(queueId, firstUserId);
+    await joinQueue(queueId, secondUserId);
+
+    const queue = await listQueue(queueId);
+
+    expect(queue[0]?.userId).toBe(firstUserId);
+    expect(queue[1]?.userId).toBe(secondUserId);
   });
 });
 
 describe("leaveQueue", () => {
-  it("removes the user and records left history", () => {
-    joinQueue(1, 1);
+  it("changes the entry status to canceled", async () => {
+    const joined = await joinQueue(queueId, firstUserId);
 
-    const initialHistoryCount = store.history.length;
+    const result = await leaveQueue(queueId, firstUserId);
 
-    leaveQueue(1, 1);
+    expect(result.status).toBe(QueueEntryStatus.CANCELED);
 
-    expect(store.queueEntries).toHaveLength(0);
-    expect(store.history).toHaveLength(initialHistoryCount + 1);
-    expect(store.history.at(-1)).toMatchObject({
-      userId: 1,
-      serviceId: 1,
-      outcome: "left",
+    const savedEntry = await prisma.queueEntry.findUnique({
+      where: {
+        id: joined.id,
+      },
     });
+
+    expect(savedEntry?.status).toBe(QueueEntryStatus.CANCELED);
+  });
+
+  it("recalculates remaining positions", async () => {
+    await joinQueue(queueId, firstUserId);
+    await joinQueue(queueId, secondUserId);
+
+    await leaveQueue(queueId, firstUserId);
+
+    const queue = await listQueue(queueId);
+
+    expect(queue).toHaveLength(1);
+    expect(queue[0]?.userId).toBe(secondUserId);
+    expect(queue[0]?.position).toBe(1);
+  });
+
+  it("rejects leaving when user is not waiting", async () => {
+    await expect(leaveQueue(queueId, firstUserId)).rejects.toThrow(
+      "You are not currently waiting in this queue.",
+    );
   });
 });
 
 describe("getUserQueueStatus", () => {
-  it("returns the user's queue position", () => {
-    joinQueue(1, 1);
+  it("returns position and estimated wait time", async () => {
+    await joinQueue(queueId, firstUserId);
+    await joinQueue(queueId, secondUserId);
 
-    const status = getUserQueueStatus(1, 1);
+    const status = await getUserQueueStatus(queueId, secondUserId);
 
-    expect(status.position).toBe(1);
-    expect(status.estimatedWaitMinutes).toBe(0);
+    expect(status.position).toBe(2);
+    expect(status.estimatedWaitMinutes).toBe(20);
   });
 });
 
 describe("serveNext", () => {
-  it("serves and removes the first user", () => {
-    joinQueue(1, 1);
+  it("serves the first waiting user", async () => {
+    const joined = await joinQueue(queueId, firstUserId);
 
-    const served = serveNext(1);
+    const served = await serveNext(queueId);
 
-    expect(served.userId).toBe(1);
-    expect(store.queueEntries).toHaveLength(0);
-  });
+    expect(served.userId).toBe(firstUserId);
+    expect(served.status).toBe(QueueEntryStatus.SERVED);
 
-  it("records served history", () => {
-    joinQueue(1, 1);
-
-    const initialHistoryCount = store.history.length;
-
-    serveNext(1);
-
-    expect(store.history).toHaveLength(initialHistoryCount + 1);
-    expect(store.history.at(-1)).toMatchObject({
-      userId: 1,
-      serviceId: 1,
-      outcome: "served",
+    const savedEntry = await prisma.queueEntry.findUnique({
+      where: {
+        id: joined.id,
+      },
     });
+
+    expect(savedEntry?.status).toBe(QueueEntryStatus.SERVED);
   });
 
-  it("creates a served notification", () => {
-    joinQueue(1, 1);
-
-    const initialNotificationCount = store.notifications.length;
-
-    serveNext(1);
-
-    expect(store.notifications).toHaveLength(
-      initialNotificationCount + 1,
-    );
-    expect(store.notifications.at(-1)).toMatchObject({
-      userId: 1,
-      type: "served",
+  it("serves a priority user first", async () => {
+    await joinQueue(queueId, firstUserId, {
+      priority: "normal",
     });
+
+    await joinQueue(queueId, secondUserId, {
+      priority: "priority",
+    });
+
+    const served = await serveNext(queueId);
+
+    expect(served.userId).toBe(secondUserId);
   });
 
-  it("throws when the queue is empty", () => {
-    expect(() => serveNext(1)).toThrow(
+  it("recalculates queue positions after serving", async () => {
+    await joinQueue(queueId, firstUserId);
+    await joinQueue(queueId, secondUserId);
+
+    await serveNext(queueId);
+
+    const queue = await listQueue(queueId);
+
+    expect(queue).toHaveLength(1);
+    expect(queue[0]?.userId).toBe(secondUserId);
+    expect(queue[0]?.position).toBe(1);
+    expect(queue[0]?.estimatedWaitMinutes).toBe(0);
+  });
+
+  it("throws when the queue is empty", async () => {
+    await expect(serveNext(queueId)).rejects.toThrow(
       "There is nobody waiting in this queue.",
     );
   });
