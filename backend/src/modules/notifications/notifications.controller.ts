@@ -1,25 +1,48 @@
-import type { NextFunction, Request, Response } from 'express'
-import { getUserNotifications, markAllRead, unreadCount } from './notifications.service'
+import type {
+  NextFunction,
+  Request,
+  Response,
+} from "express";
+import {
+  getUserNotifications,
+  markAllRead,
+  unreadCount,
+} from "./notifications.service";
 
-export async function getNotifications(req: Request, res: Response, next: NextFunction) {
+export async function getNotifications(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
-    // requireAuth guarantees req.user, so a user only sees their own
-    // notifications - the id is never read from the request.
-    const userId = req.user!.id
+    const userId = req.user!.id;
+
+    const [notifications, unread] = await Promise.all([
+      getUserNotifications(userId),
+      unreadCount(userId),
+    ]);
+
     res.json({
-      notifications: getUserNotifications(userId),
-      unreadCount: unreadCount(userId),
-    })
-  } catch (err) {
-    next(err)
+      notifications,
+      unreadCount: unread,
+    });
+  } catch (error) {
+    next(error);
   }
 }
 
-export async function postMarkRead(req: Request, res: Response, next: NextFunction) {
+export async function postMarkRead(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
-    const updated = markAllRead(req.user!.id)
-    res.json({ updated })
-  } catch (err) {
-    next(err)
+    const updated = await markAllRead(req.user!.id);
+
+    res.json({
+      updated,
+    });
+  } catch (error) {
+    next(error);
   }
 }

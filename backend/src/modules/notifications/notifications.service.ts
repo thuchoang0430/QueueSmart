@@ -1,87 +1,153 @@
 import {
-  nextId,
-  store,
-  type Notification,
-  type NotificationType,
-} from '../../store/memoryStore'
+  NotificationType as DatabaseNotificationType,
+  type Notification as DatabaseNotification,
+} from "../../generated/prisma/client";
+import { prisma } from "../../database/prisma";
 
-// Notification module for A3. Backend-only: notifications are created by events
-// (joining a queue, being close to served) and read back by the front end. No
-// real email or SMS is sent - the message is logged to the store and returned
-// to the UI, which is all A3 requires.
-//
-// Read side: getUserNotifications / unreadCount power the notifications UI.
-// Write side: the notify* helpers are called by the queue module when queue
-// state changes.
+export type NotificationType =
+  | "joined"
+  | "almost-up"
+  | "served";
+
+export interface NotificationRecord {
+  id: number;
+  userId: number;
+  type: NotificationType;
+  message: string;
+  createdAt: number;
+  read: boolean;
+}
 
 export interface CreateNotificationInput {
-  userId: number
-  type: NotificationType
-  message: string
+  userId: number;
+  type: NotificationType;
+  message: string;
 }
 
-/** Low-level create. Prefer the notify* helpers for the standard events. */
-export function createNotification(input: CreateNotificationInput): Notification {
-  const notification: Notification = {
-    id: nextId('notifications'),
-    userId: input.userId,
-    type: input.type,
-    message: input.message,
-    createdAt: Date.now(),
-    read: false,
+function toDatabaseType(
+  type: NotificationType,
+): DatabaseNotificationType {
+  switch (type) {
+    case "joined":
+      return DatabaseNotificationType.JOINED;
+    case "almost-up":
+      return DatabaseNotificationType.ALMOST_UP;
+    case "served":
+      return DatabaseNotificationType.SERVED;
   }
-
-  store.notifications.push(notification)
-  return notification
 }
 
-/** Fired when a user joins a queue. */
-export function notifyQueueJoined(userId: number, serviceName: string): Notification {
+function fromDatabaseType(
+  type: DatabaseNotificationType,
+): NotificationType {
+  switch (type) {
+    case DatabaseNotificationType.JOINED:
+      return "joined";
+    case DatabaseNotificationType.ALMOST_UP:
+      return "almost-up";
+    case DatabaseNotificationType.SERVED:
+      return "served";
+  }
+}
+
+function toNotificationRecord(
+  notification: DatabaseNotification,
+): NotificationRecord {
+  return {
+    id: notification.id,
+    userId: notification.userId,
+    type: fromDatabaseType(notification.type),
+    message: notification.message,
+    createdAt: notification.createdAt.getTime(),
+    read: notification.read,
+  };
+}
+
+export async function createNotification(
+  input: CreateNotificationInput,
+): Promise<NotificationRecord> {
+  const notification = await prisma.notification.create({
+    data: {
+      userId: input.userId,
+      type: toDatabaseType(input.type),
+      message: input.message,
+    },
+  });
+
+  return toNotificationRecord(notification);
+}
+
+export async function notifyQueueJoined(
+  userId: number,
+  serviceName: string,
+): Promise<NotificationRecord> {
   return createNotification({
     userId,
-    type: 'joined',
+    type: "joined",
     message: `You joined the queue for ${serviceName}.`,
-  })
+  });
 }
 
-/** Fired when a user is close to the front of the queue. */
-export function notifyAlmostServed(userId: number, serviceName: string): Notification {
+export async function notifyAlmostServed(
+  userId: number,
+  serviceName: string,
+): Promise<NotificationRecord> {
   return createNotification({
     userId,
-    type: 'almost-up',
+    type: "almost-up",
     message: `You are almost up for ${serviceName}. Please be ready.`,
-  })
+  });
 }
 
-/** Fired when a user has been served. */
-export function notifyServed(userId: number, serviceName: string): Notification {
+export async function notifyServed(
+  userId: number,
+  serviceName: string,
+): Promise<NotificationRecord> {
   return createNotification({
     userId,
-    type: 'served',
+    type: "served",
     message: `You have been served for ${serviceName}.`,
-  })
+  });
 }
 
-/** Returns one user's notifications, most recent first. */
-export function getUserNotifications(userId: number): Notification[] {
-  return store.notifications
-    .filter((n) => n.userId === userId)
-    .sort((a, b) => b.createdAt - a.createdAt)
+export async function getUserNotifications(
+  userId: number,
+): Promise<NotificationRecord[]> {
+  const notifications = await prisma.notification.findMany({
+    where: {
+      userId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  return notifications.map(toNotificationRecord);
 }
 
-/** How many of a user's notifications are unread. */
-export function unreadCount(userId: number): number {
-  return store.notifications.filter((n) => n.userId === userId && !n.read).length
+export async function unreadCount(
+  userId: number,
+): Promise<number> {
+  return prisma.notification.count({
+    where: {
+      userId,
+      read: false,
+    },
+  });
 }
 
-/** Marks every notification for a user as read. Returns how many changed. */
-export function markAllRead(userId: number): number {
-  let updated = 0
-  for (const n of store.notifications) {
-    if (n.userId === userId && !n.read) {
-      n.read = true
-      updated++
-    }
-  }
-  return updated
+export async function markAllRead(
+  userId: number,
+): Promise<number> {
+  const result = await prisma.notification.updateMany({
+    where: {
+      userId,
+      read: false,
+    },
+    data: {
+      read: true,
+    },
+  });
+
+  return result.count;
 }

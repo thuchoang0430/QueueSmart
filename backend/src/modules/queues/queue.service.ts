@@ -278,7 +278,7 @@ export async function joinQueue(
     throw new Error("The new queue entry could not be retrieved.");
   }
 
-  notifyQueueJoined(userId, result.serviceName);
+  await notifyQueueJoined(userId, result.serviceName);
 
   return {
     ...entry,
@@ -289,9 +289,15 @@ export async function joinQueue(
   };
 }
 
-export async function leaveQueue(serviceId: number, userId: number) {
-  return prisma.$transaction(async (transaction) => {
-    const { queue } = await findQueueByServiceId(serviceId, transaction);
+export async function leaveQueue(
+  serviceId: number,
+  userId: number,
+) {
+  const result = await prisma.$transaction(async (transaction) => {
+    const { service, queue } = await findQueueByServiceId(
+      serviceId,
+      transaction,
+    );
 
     const entry = await transaction.queueEntry.findFirst({
       where: {
@@ -302,7 +308,9 @@ export async function leaveQueue(serviceId: number, userId: number) {
     });
 
     if (!entry) {
-      throw ApiError.notFound("You are not currently waiting in this queue.");
+      throw ApiError.notFound(
+        "You are not currently waiting in this queue.",
+      );
     }
 
     const canceledEntry = await transaction.queueEntry.update({
@@ -317,8 +325,21 @@ export async function leaveQueue(serviceId: number, userId: number) {
 
     await reorderQueueEntries(queue.id, transaction);
 
-    return canceledEntry;
+    return {
+      entry: canceledEntry,
+      serviceName: service.name,
+    };
   });
+
+  await recordHistory({
+    userId: result.entry.userId,
+    serviceId,
+    serviceName: result.serviceName,
+    joinedAt: result.entry.joinTime.getTime(),
+    outcome: "left",
+  });
+
+  return result.entry;
 }
 
 export async function getUserQueueStatus(
@@ -425,7 +446,7 @@ export async function serveNext(
     };
   });
 
-  recordHistory({
+  await recordHistory({
     userId: result.entry.userId,
     serviceId,
     serviceName: result.serviceName,
@@ -433,7 +454,7 @@ export async function serveNext(
     outcome: "served",
   });
 
-  notifyServed(result.entry.userId, result.serviceName);
+  await notifyServed(result.entry.userId, result.serviceName);
 
   const nextWaiting = await prisma.queueEntry.findFirst({
     where: {
@@ -446,7 +467,7 @@ export async function serveNext(
   });
 
   if (nextWaiting) {
-    notifyAlmostServed(nextWaiting.userId, result.serviceName);
+    await notifyAlmostServed(nextWaiting.userId, result.serviceName);
   }
 
   return {

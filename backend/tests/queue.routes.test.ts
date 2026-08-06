@@ -17,6 +17,8 @@ let serviceId: number;
 let queueId: number;
 
 async function clearTestData(): Promise<void> {
+  await prisma.history.deleteMany();
+  await prisma.notification.deleteMany();
   await prisma.queueEntry.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.queue.deleteMany();
