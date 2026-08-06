@@ -1,4 +1,11 @@
-export type Priority = 'low' | 'medium' | 'high'
+export const PRIORITY_LEVELS = [
+  'low',
+  'medium',
+  'high',
+] as const
+
+export type Priority =
+  (typeof PRIORITY_LEVELS)[number]
 export type ServiceStatus = 'open' | 'closed'
 
 export interface Service {
@@ -17,14 +24,6 @@ export interface NewServiceInput {
   priority: Priority
 }
 
-export interface QueueUser {
-  id: string
-  name: string
-  email: string
-  joinedMinutesAgo: number
-}
-
-export type QueueMap = Record<number, QueueUser[]>
 
 export interface ActivityLogEntry {
   id: string

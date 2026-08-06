@@ -1,6 +1,10 @@
 import { useState, type FormEvent } from 'react'
-import { PRIORITY_LEVELS } from '../../../data/mockServices'
-import type { NewServiceInput, Priority, Service } from '../../../types'
+import { PRIORITY_LEVELS } from '../../../types'
+import type {
+  NewServiceInput,
+  Priority,
+  Service,
+} from '../../../types'
 
 interface FormValues {
   name: string
