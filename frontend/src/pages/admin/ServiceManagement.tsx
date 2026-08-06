@@ -12,26 +12,52 @@ const priorityBadge: Record<Priority, string> = {
 type Mode = 'create' | { id: number } | null
 
 export default function ServiceManagement() {
-  const { services, addService, updateService, removeService } = useServices()
+  const {
+    services,
+    servicesLoading,
+    servicesError,
+    clearServicesError,
+    addService,
+    updateService,
+    removeService,
+  } = useServices()
   const [mode, setMode] = useState<Mode>(null)
   const [confirmDelete, setConfirmDelete] = useState<Service | null>(null)
 
   const editingService =
     mode && mode !== 'create' ? services.find((s) => s.id === mode.id) : null
 
-  function handleSubmit(values: NewServiceInput) {
-    if (mode === 'create') {
-      addService(values)
-    } else if (editingService) {
-      updateService(editingService.id, values)
+  async function handleSubmit(
+    values: NewServiceInput,
+  ) {
+    try {
+      clearServicesError()
+
+      if (mode === 'create') {
+        await addService(values)
+      } else if (editingService) {
+        await updateService(
+          editingService.id,
+          values,
+        )
+      }
+
+      setMode(null)
+    } catch {
+      // The context exposes the backend error.
     }
-    setMode(null)
   }
 
-  function handleDeleteConfirmed() {
+  async function handleDeleteConfirmed() {
     if (!confirmDelete) return
-    removeService(confirmDelete.id)
-    setConfirmDelete(null)
+
+    try {
+      clearServicesError()
+      await removeService(confirmDelete.id)
+      setConfirmDelete(null)
+    } catch {
+      // The context exposes the backend error.
+    }
   }
 
   return (
@@ -41,7 +67,25 @@ export default function ServiceManagement() {
         <p>Create and edit the services available to users.</p>
       </div>
 
-      {mode ? (
+      {servicesError && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 16,
+            borderColor: 'var(--danger)',
+          }}
+        >
+          {servicesError}
+        </div>
+      )}
+
+      {servicesLoading ? (
+        <div className="card">
+          <p className="empty">
+            Loading services...
+          </p>
+        </div>
+      ) : mode ? (
         <div className="card" style={{ maxWidth: 520 }}>
           <h2>{mode === 'create' ? 'Create Service' : `Edit ${editingService?.name}`}</h2>
           <ServiceForm

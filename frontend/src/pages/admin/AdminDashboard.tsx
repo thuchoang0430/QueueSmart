@@ -19,7 +19,24 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export default function AdminDashboard() {
-  const { services, toggleServiceStatus, getQueue, activityLog } = useServices()
+  const {
+    services,
+    servicesLoading,
+    servicesError,
+    toggleServiceStatus,
+    getQueue,
+    activityLog,
+  } = useServices()
+
+  async function handleToggleService(
+    id: number,
+  ) {
+    try {
+      await toggleServiceStatus(id)
+    } catch {
+      // The context exposes the backend error.
+    }
+  }
 
   const openCount = services.filter((s) => s.status === 'open').length
   const totalWaiting = services.reduce((sum, s) => sum + getQueue(s.id).length, 0)
@@ -31,6 +48,24 @@ export default function AdminDashboard() {
         <h1>Admin Dashboard</h1>
         <p>Overview of all services and their current queues.</p>
       </div>
+
+      {servicesError && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 16,
+            borderColor: 'var(--danger)',
+          }}
+        >
+          {servicesError}
+        </div>
+      )}
+
+      {servicesLoading && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          Loading services...
+        </div>
+      )}
 
       <div className="grid grid-3" style={{ marginBottom: 24 }}>
         <div className="stat">
@@ -83,7 +118,7 @@ export default function AdminDashboard() {
                       <button
                         type="button"
                         className={`btn btn-sm ${s.status === 'open' ? 'btn-danger' : 'btn-success'}`}
-                        onClick={() => toggleServiceStatus(s.id)}
+                        onClick={() => void handleToggleService(s.id)}
                       >
                         {s.status === 'open' ? 'Close Queue' : 'Open Queue'}
                       </button>
