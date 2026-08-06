@@ -8,6 +8,7 @@ const USER_LINKS = [
   { to: '/queue-status', label: 'Queue Status' },
   { to: '/history', label: 'History' },
   { to: '/notifications', label: 'Notifications' },
+  { to: '/profile', label: 'Profile' },
 ]
 
 export default function UserLayout() {

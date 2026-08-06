@@ -4,6 +4,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler'
 import authRoutes from './modules/auth/auth.routes'
 import historyRoutes from './modules/history/history.routes'
 import notificationsRoutes from './modules/notifications/notifications.routes'
+import profileRoutes from './modules/profile/profile.routes'
 import queueRoutes from './modules/queues/queues.routes'
 import servicesRoutes from './modules/services/services.routes'
 
@@ -22,6 +23,7 @@ export function createApp(): Express {
   })
 
   app.use('/api/auth', authRoutes)
+  app.use('/api/profile', profileRoutes)
   app.use('/api/services', servicesRoutes)
   app.use('/api/queues', queueRoutes)
   app.use('/api/history', historyRoutes)
