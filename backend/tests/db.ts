@@ -39,7 +39,7 @@ export async function resetUsers(): Promise<void> {
   const hashes = await demoHashes()
 
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "Notification", "QueueEntry", "UserProfile", "UserCredential" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "History", "Notification", "QueueEntry", "UserProfile", "UserCredential" RESTART IDENTITY CASCADE',
   )
 
   for (const user of demoUsers) {

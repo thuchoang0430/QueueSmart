@@ -28,9 +28,15 @@ enum QueueEntryPriority {
   PRIORITY
 }
 
-enum NotificationStatus {
-  SENT
-  VIEWED
+enum HistoryOutcome {
+  SERVED
+  LEFT
+}
+
+enum NotificationType {
+  JOINED
+  ALMOST_UP
+  SERVED
 }
 
 model UserCredential {
@@ -42,6 +48,7 @@ model UserCredential {
   profile       UserProfile?
   queueEntries  QueueEntry[]
   notifications Notification[]
+  history       History[]
 }
 
 model UserProfile {
@@ -77,10 +84,10 @@ model Queue {
 }
 
 model QueueEntry {
-  id       Int              @id @default(autoincrement())
+  id       Int                @id @default(autoincrement())
   position Int
-  joinTime DateTime         @default(now())
-  status   QueueEntryStatus @default(WAITING)
+  joinTime DateTime           @default(now())
+  status   QueueEntryStatus   @default(WAITING)
   priority QueueEntryPriority @default(NORMAL)
 
   queueId Int
@@ -94,12 +101,31 @@ model QueueEntry {
   @@index([userId, status])
 }
 
-model Notification {
-  id        Int                @id @default(autoincrement())
-  message   String
-  timestamp DateTime           @default(now())
-  status    NotificationStatus @default(SENT)
+model History {
+  id          Int            @id @default(autoincrement())
+  serviceId   Int
+  serviceName String
+  joinedAt    DateTime
+  endedAt     DateTime       @default(now())
+  waitMinutes Int
+  outcome     HistoryOutcome
 
   userId Int
   user   UserCredential @relation(fields: [userId], references: [id])
+
+  @@index([userId, endedAt])
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  type      NotificationType
+  message   String
+  createdAt DateTime         @default(now())
+  read      Boolean          @default(false)
+
+  userId Int
+  user   UserCredential @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([userId, read])
 }

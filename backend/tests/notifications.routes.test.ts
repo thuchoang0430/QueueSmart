@@ -1,54 +1,127 @@
-import request from 'supertest'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { createApp } from '../src/app'
-import { resetStore } from '../src/store/memoryStore'
-import { adminToken, bearer, userToken } from './helpers'
+import request from "supertest";
+import {
+  afterAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
+import { createApp } from "../src/app";
+import { prisma } from "../src/database/prisma";
+import {
+  notifyAlmostServed,
+  notifyQueueJoined,
+} from "../src/modules/notifications/notifications.service";
+import {
+  adminToken,
+  bearer,
+  userToken,
+} from "./helpers";
+import {
+  disconnectDb,
+  resetUsers,
+} from "./db";
 
-const app = createApp()
+const app = createApp();
 
-beforeEach(() => {
-  resetStore()
-})
+beforeEach(async () => {
+  await resetUsers();
+});
 
-describe('GET /api/notifications', () => {
-  it('returns the signed-in user’s notifications and unread count', async () => {
-    const res = await request(app)
-      .get('/api/notifications')
-      .set('Authorization', bearer(userToken()))
-    expect(res.status).toBe(200)
-    expect(res.body.notifications).toHaveLength(2)
-    expect(res.body.unreadCount).toBe(1)
-  })
+afterAll(async () => {
+  await disconnectDb();
+});
 
-  it('returns an empty list for a user with no notifications', async () => {
-    const res = await request(app)
-      .get('/api/notifications')
-      .set('Authorization', bearer(adminToken()))
-    expect(res.status).toBe(200)
-    expect(res.body.notifications).toEqual([])
-    expect(res.body.unreadCount).toBe(0)
-  })
+describe("GET /api/notifications", () => {
+  it("returns the signed-in user's notifications and unread count", async () => {
+    const first = await notifyQueueJoined(
+      1,
+      "Academic Advising",
+    );
 
-  it('401s without a token', async () => {
-    expect((await request(app).get('/api/notifications')).status).toBe(401)
-  })
-})
+    await notifyAlmostServed(
+      1,
+      "Academic Advising",
+    );
 
-describe('POST /api/notifications/read', () => {
-  it('marks all of the user’s notifications read', async () => {
-    const token = userToken()
+    await prisma.notification.update({
+      where: {
+        id: first.id,
+      },
+      data: {
+        read: true,
+      },
+    });
 
-    const markRes = await request(app)
-      .post('/api/notifications/read')
-      .set('Authorization', bearer(token))
-    expect(markRes.status).toBe(200)
-    expect(markRes.body.updated).toBe(1)
+    const response = await request(app)
+      .get("/api/notifications")
+      .set("Authorization", bearer(userToken()));
 
-    const after = await request(app).get('/api/notifications').set('Authorization', bearer(token))
-    expect(after.body.unreadCount).toBe(0)
-  })
+    expect(response.status).toBe(200);
+    expect(response.body.notifications).toHaveLength(2);
+    expect(response.body.unreadCount).toBe(1);
+  });
 
-  it('401s without a token', async () => {
-    expect((await request(app).post('/api/notifications/read')).status).toBe(401)
-  })
-})
+  it("returns an empty list for a user with no notifications", async () => {
+    const response = await request(app)
+      .get("/api/notifications")
+      .set("Authorization", bearer(adminToken()));
+
+    expect(response.status).toBe(200);
+    expect(response.body.notifications).toEqual([]);
+    expect(response.body.unreadCount).toBe(0);
+  });
+
+  it("returns 401 without a token", async () => {
+    const response = await request(app).get(
+      "/api/notifications",
+    );
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("POST /api/notifications/read", () => {
+  it("marks all of the user's notifications as read", async () => {
+    await notifyQueueJoined(
+      1,
+      "Academic Advising",
+    );
+
+    await notifyAlmostServed(
+      1,
+      "Academic Advising",
+    );
+
+    const token = userToken();
+
+    const markResponse = await request(app)
+      .post("/api/notifications/read")
+      .set("Authorization", bearer(token));
+
+    expect(markResponse.status).toBe(200);
+    expect(markResponse.body.updated).toBe(2);
+
+    const afterResponse = await request(app)
+      .get("/api/notifications")
+      .set("Authorization", bearer(token));
+
+    expect(afterResponse.status).toBe(200);
+    expect(afterResponse.body.unreadCount).toBe(0);
+
+    expect(
+      afterResponse.body.notifications.every(
+        (notification: { read: boolean }) =>
+          notification.read,
+      ),
+    ).toBe(true);
+  });
+
+  it("returns 401 without a token", async () => {
+    const response = await request(app).post(
+      "/api/notifications/read",
+    );
+
+    expect(response.status).toBe(401);
+  });
+});
