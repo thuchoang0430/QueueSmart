@@ -13,12 +13,9 @@ import {
   updateService as updateServiceApi,
   updateServiceStatus,
 } from '../api/services'
-import { initialQueues } from '../data/mockQueues'
 import type {
   ActivityLogEntry,
   NewServiceInput,
-  QueueMap,
-  QueueUser,
   Service,
 } from '../types'
 
@@ -41,24 +38,6 @@ interface ServicesContextValue {
     id: number,
   ) => Promise<Service>
   removeService: (id: number) => Promise<void>
-  queues: QueueMap
-  getQueue: (serviceId: number) => QueueUser[]
-  joinQueue: (
-    serviceId: number,
-    user: { name: string; email: string },
-  ) => void
-  moveQueueUser: (
-    serviceId: number,
-    userId: string,
-    direction: 'up' | 'down',
-  ) => void
-  removeFromQueue: (
-    serviceId: number,
-    userId: string,
-  ) => void
-  serveNextUser: (
-    serviceId: number,
-  ) => QueueUser | null
   activityLog: ActivityLogEntry[]
 }
 
@@ -83,9 +62,6 @@ export function ServicesProvider({
     useState(true)
   const [servicesError, setServicesError] =
     useState<string | null>(null)
-
-  const [queues, setQueues] =
-    useState<QueueMap>(initialQueues)
 
   const [activityLog, setActivityLog] = useState<
     ActivityLogEntry[]
@@ -143,11 +119,6 @@ export function ServicesProvider({
           (left, right) => left.id - right.id,
         ),
       )
-
-      setQueues((previous) => ({
-        ...previous,
-        [service.id]: [],
-      }))
 
       logActivity(
         `Created service "${service.name}"`,
@@ -254,12 +225,6 @@ export function ServicesProvider({
         ),
       )
 
-      setQueues((previous) => {
-        const next = { ...previous }
-        delete next[id]
-        return next
-      })
-
       logActivity(
         `Deleted service "${response.service.name}"`,
       )
@@ -267,121 +232,6 @@ export function ServicesProvider({
       setServicesError(errorMessage(error))
       throw error
     }
-  }
-
-  function getQueue(
-    serviceId: number,
-  ): QueueUser[] {
-    return queues[serviceId] ?? []
-  }
-
-  function joinQueue(
-    serviceId: number,
-    user: { name: string; email: string },
-  ) {
-    setQueues((previous) => {
-      const list =
-        previous[serviceId] ?? []
-
-      const alreadyInQueue = list.some(
-        (queueUser) =>
-          queueUser.email === user.email,
-      )
-
-      if (alreadyInQueue) {
-        return previous
-      }
-
-      const newUser: QueueUser = {
-        id: `${serviceId}-${user.email}`,
-        name: user.name,
-        email: user.email,
-        joinedMinutesAgo: 0,
-      }
-
-      return {
-        ...previous,
-        [serviceId]: [
-          ...list,
-          newUser,
-        ],
-      }
-    })
-  }
-
-  function moveQueueUser(
-    serviceId: number,
-    userId: string,
-    direction: 'up' | 'down',
-  ) {
-    setQueues((previous) => {
-      const list = [
-        ...(previous[serviceId] ?? []),
-      ]
-
-      const index = list.findIndex(
-        (user) => user.id === userId,
-      )
-
-      const swapWith =
-        direction === 'up'
-          ? index - 1
-          : index + 1
-
-      if (
-        index < 0 ||
-        swapWith < 0 ||
-        swapWith >= list.length
-      ) {
-        return previous
-      }
-
-      ;[list[index], list[swapWith]] = [
-        list[swapWith],
-        list[index],
-      ]
-
-      return {
-        ...previous,
-        [serviceId]: list,
-      }
-    })
-  }
-
-  function removeFromQueue(
-    serviceId: number,
-    userId: string,
-  ) {
-    setQueues((previous) => ({
-      ...previous,
-      [serviceId]: (
-        previous[serviceId] ?? []
-      ).filter((user) => user.id !== userId),
-    }))
-  }
-
-  function serveNextUser(
-    serviceId: number,
-  ): QueueUser | null {
-    let served: QueueUser | null = null
-
-    setQueues((previous) => {
-      const list =
-        previous[serviceId] ?? []
-
-      if (list.length === 0) {
-        return previous
-      }
-
-      served = list[0]
-
-      return {
-        ...previous,
-        [serviceId]: list.slice(1),
-      }
-    })
-
-    return served
   }
 
   return (
@@ -396,12 +246,6 @@ export function ServicesProvider({
         updateService,
         toggleServiceStatus,
         removeService,
-        queues,
-        getQueue,
-        joinQueue,
-        moveQueueUser,
-        removeFromQueue,
-        serveNextUser,
         activityLog,
       }}
     >
