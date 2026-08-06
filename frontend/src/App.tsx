@@ -11,6 +11,7 @@ import JoinQueue from './pages/user/JoinQueue'
 import QueueStatus from './pages/user/QueueStatus'
 import History from './pages/user/History'
 import Notifications from './pages/user/Notifications'
+import Profile from './pages/user/Profile'
 
 import AdminDashboard from './pages/admin/AdminDashboard'
 import ServiceManagement from './pages/admin/ServiceManagement'
@@ -30,6 +31,7 @@ function App() {
         <Route path="/queue-status" element={<QueueStatus />} />
         <Route path="/history" element={<History />} />
         <Route path="/notifications" element={<Notifications />} />
+        <Route path="/profile" element={<Profile />} />
       </Route>
 
       <Route element={<AdminLayout />}>
