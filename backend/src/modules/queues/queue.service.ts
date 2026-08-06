@@ -292,7 +292,7 @@ export async function joinQueue(
 export async function leaveQueue(
   serviceId: number,
   userId: number,
-) {
+): Promise<QueueEntryWithWaitTime> {
   const result = await prisma.$transaction(async (transaction) => {
     const { service, queue } = await findQueueByServiceId(
       serviceId,
@@ -321,6 +321,19 @@ export async function leaveQueue(
         status: QueueEntryStatus.CANCELED,
         position: 0,
       },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: {
+                fullName: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     await reorderQueueEntries(queue.id, transaction);
@@ -339,7 +352,10 @@ export async function leaveQueue(
     outcome: "left",
   });
 
-  return result.entry;
+  return {
+    ...result.entry,
+    estimatedWaitMinutes: 0,
+  };
 }
 
 export async function getUserQueueStatus(
