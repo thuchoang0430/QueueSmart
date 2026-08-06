@@ -1,5 +1,11 @@
 import request from "supertest";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import {
   QueueEntryStatus,
@@ -9,18 +15,20 @@ import {
 import { createApp } from "../src/app";
 import { prisma } from "../src/database/prisma";
 import { resetStore } from "../src/store/memoryStore";
-import { adminToken, bearer, userToken } from "./helpers";
+import {
+  adminToken,
+  bearer,
+  userToken,
+} from "./helpers";
 
 const app = createApp();
 
 let serviceId: number;
-let queueId: number;
 
 async function clearTestData(): Promise<void> {
   await prisma.history.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.queueEntry.deleteMany();
-  await prisma.notification.deleteMany();
   await prisma.queue.deleteMany();
   await prisma.service.deleteMany();
   await prisma.userProfile.deleteMany();
@@ -65,13 +73,14 @@ beforeEach(async () => {
   const service = await prisma.service.create({
     data: {
       name: "Academic Advising",
-      description: "Academic advising and course planning.",
+      description:
+        "Academic advising and course planning.",
       expectedDuration: 20,
       priorityLevel: 2,
     },
   });
 
-  const queue = await prisma.queue.create({
+  await prisma.queue.create({
     data: {
       serviceId: service.id,
       status: QueueStatus.OPEN,
@@ -79,7 +88,6 @@ beforeEach(async () => {
   });
 
   serviceId = service.id;
-  queueId = queue.id;
 });
 
 afterAll(async () => {
@@ -88,10 +96,13 @@ afterAll(async () => {
 });
 
 describe("POST /api/queues/:serviceId/join", () => {
-  it("allows an authenticated user to join", async () => {
+  it("returns the frontend QueueEntry format", async () => {
     const response = await request(app)
       .post(`/api/queues/${serviceId}/join`)
-      .set("Authorization", bearer(userToken()))
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      )
       .send({
         priority: "normal",
       });
@@ -100,11 +111,27 @@ describe("POST /api/queues/:serviceId/join", () => {
 
     expect(response.body.entry).toMatchObject({
       userId: 1,
-      queueId,
+      serviceId,
+      name: "Student User",
+      email: "user@test.com",
+      priority: "normal",
       position: 1,
       status: QueueEntryStatus.WAITING,
       estimatedWaitMinutes: 0,
+      joinedAt: expect.any(Number),
     });
+
+    expect(
+      response.body.entry,
+    ).not.toHaveProperty("user");
+
+    expect(
+      response.body.entry,
+    ).not.toHaveProperty("joinTime");
+
+    expect(
+      response.body.entry,
+    ).not.toHaveProperty("queueId");
   });
 
   it("returns 401 without authentication", async () => {
@@ -118,12 +145,18 @@ describe("POST /api/queues/:serviceId/join", () => {
   it("returns 409 when joining twice", async () => {
     await request(app)
       .post(`/api/queues/${serviceId}/join`)
-      .set("Authorization", bearer(userToken()))
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      )
       .send({});
 
     const response = await request(app)
       .post(`/api/queues/${serviceId}/join`)
-      .set("Authorization", bearer(userToken()))
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      )
       .send({});
 
     expect(response.status).toBe(409);
@@ -132,7 +165,10 @@ describe("POST /api/queues/:serviceId/join", () => {
   it("returns 404 for an unknown service", async () => {
     const response = await request(app)
       .post("/api/queues/999999/join")
-      .set("Authorization", bearer(userToken()))
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      )
       .send({});
 
     expect(response.status).toBe(404);
@@ -143,81 +179,145 @@ describe("GET /api/queues/:serviceId/status", () => {
   it("returns the user's queue status", async () => {
     await request(app)
       .post(`/api/queues/${serviceId}/join`)
-      .set("Authorization", bearer(userToken()))
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      )
       .send({});
 
     const response = await request(app)
       .get(`/api/queues/${serviceId}/status`)
-      .set("Authorization", bearer(userToken()));
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      );
 
     expect(response.status).toBe(200);
-    expect(response.body.entry.position).toBe(1);
-    expect(response.body.entry.userId).toBe(1);
+
+    expect(response.body.entry).toMatchObject({
+      userId: 1,
+      serviceId,
+      name: "Student User",
+      email: "user@test.com",
+      priority: "normal",
+      position: 1,
+      joinedAt: expect.any(Number),
+    });
   });
 });
 
 describe("DELETE /api/queues/:serviceId/leave", () => {
-  it("allows a user to leave", async () => {
+  it("returns the canceled entry in the API format", async () => {
     await request(app)
       .post(`/api/queues/${serviceId}/join`)
-      .set("Authorization", bearer(userToken()))
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      )
       .send({});
 
     const response = await request(app)
       .delete(`/api/queues/${serviceId}/leave`)
-      .set("Authorization", bearer(userToken()));
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      );
 
     expect(response.status).toBe(200);
-    expect(response.body.entry.userId).toBe(1);
-    expect(response.body.entry.status).toBe(QueueEntryStatus.CANCELED);
+
+    expect(response.body.entry).toMatchObject({
+      userId: 1,
+      serviceId,
+      name: "Student User",
+      email: "user@test.com",
+      priority: "normal",
+      status: QueueEntryStatus.CANCELED,
+      position: 0,
+      estimatedWaitMinutes: 0,
+    });
   });
 });
 
 describe("GET /api/queues/:serviceId", () => {
-  it("allows an admin to view the queue", async () => {
+  it("allows an admin to view the formatted queue", async () => {
     await request(app)
       .post(`/api/queues/${serviceId}/join`)
-      .set("Authorization", bearer(userToken()))
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      )
       .send({});
 
     const response = await request(app)
       .get(`/api/queues/${serviceId}`)
-      .set("Authorization", bearer(adminToken()));
+      .set(
+        "Authorization",
+        bearer(adminToken()),
+      );
 
     expect(response.status).toBe(200);
     expect(response.body.total).toBe(1);
-    expect(response.body.queue[0].userId).toBe(1);
+
+    expect(response.body.queue[0]).toMatchObject({
+      userId: 1,
+      serviceId,
+      name: "Student User",
+      email: "user@test.com",
+      priority: "normal",
+      joinedAt: expect.any(Number),
+    });
   });
 
   it("returns 403 for a normal user", async () => {
     const response = await request(app)
       .get(`/api/queues/${serviceId}`)
-      .set("Authorization", bearer(userToken()));
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      );
 
     expect(response.status).toBe(403);
   });
 });
 
 describe("POST /api/queues/:serviceId/serve", () => {
-  it("allows an admin to serve the next user", async () => {
+  it("returns the served user in the API format", async () => {
     await request(app)
       .post(`/api/queues/${serviceId}/join`)
-      .set("Authorization", bearer(userToken()))
+      .set(
+        "Authorization",
+        bearer(userToken()),
+      )
       .send({});
 
     const response = await request(app)
       .post(`/api/queues/${serviceId}/serve`)
-      .set("Authorization", bearer(adminToken()));
+      .set(
+        "Authorization",
+        bearer(adminToken()),
+      );
 
     expect(response.status).toBe(200);
-    expect(response.body.servedEntry.userId).toBe(1);
-    expect(response.body.servedEntry.status).toBe(QueueEntryStatus.SERVED);
+
+    expect(response.body.servedEntry).toMatchObject({
+      userId: 1,
+      serviceId,
+      name: "Student User",
+      email: "user@test.com",
+      priority: "normal",
+      status: QueueEntryStatus.SERVED,
+      position: 0,
+      estimatedWaitMinutes: 0,
+    });
   });
 
   it("returns 404 when the queue is empty", async () => {
     const response = await request(app)
       .post(`/api/queues/${serviceId}/serve`)
-      .set("Authorization", bearer(adminToken()));
+      .set(
+        "Authorization",
+        bearer(adminToken()),
+      );
 
     expect(response.status).toBe(404);
   });
