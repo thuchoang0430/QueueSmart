@@ -29,7 +29,8 @@ export async function postJoinQueue(
 
     const userId = getAuthenticatedUserId(req);
 
-    const entry = joinQueue(serviceId, userId, req.body);
+    // Prisma service functions return Promises
+    const entry = await joinQueue(serviceId, userId, req.body);
 
     res.status(201).json({
       message: "You successfully joined the queue.",
@@ -50,7 +51,7 @@ export async function deleteLeaveQueue(
 
     const userId = getAuthenticatedUserId(req);
 
-    const entry = leaveQueue(serviceId, userId);
+    const entry = await leaveQueue(serviceId, userId);
 
     res.json({
       message: "You successfully left the queue.",
@@ -71,7 +72,7 @@ export async function getMyQueueStatus(
 
     const userId = getAuthenticatedUserId(req);
 
-    const entry = getUserQueueStatus(serviceId, userId);
+    const entry = await getUserQueueStatus(serviceId, userId);
 
     res.json({
       entry,
@@ -89,7 +90,7 @@ export async function getQueue(
   try {
     const serviceId = parseId(String(req.params.serviceId), "Service id");
 
-    const queue = listQueue(serviceId);
+    const queue = await listQueue(serviceId);
 
     res.json({
       queue,
@@ -108,10 +109,10 @@ export async function postServeNext(
   try {
     const serviceId = parseId(String(req.params.serviceId), "Service id");
 
-    const servedEntry = serveNextFromQueue(serviceId);
+    const servedEntry = await serveNextFromQueue(serviceId);
 
     res.json({
-      message: `${servedEntry.name} is now being served.`,
+      message: "The next user is now being served.",
       servedEntry,
     });
   } catch (error) {

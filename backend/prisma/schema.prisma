@@ -23,6 +23,11 @@ enum QueueEntryStatus {
   CANCELED
 }
 
+enum QueueEntryPriority {
+  NORMAL
+  PRIORITY
+}
+
 enum NotificationStatus {
   SENT
   VIEWED
@@ -76,12 +81,17 @@ model QueueEntry {
   position Int
   joinTime DateTime         @default(now())
   status   QueueEntryStatus @default(WAITING)
+  priority QueueEntryPriority @default(NORMAL)
 
   queueId Int
   queue   Queue @relation(fields: [queueId], references: [id])
 
   userId Int
   user   UserCredential @relation(fields: [userId], references: [id])
+
+  @@index([queueId, status])
+  @@index([queueId, priority, joinTime])
+  @@index([userId, status])
 }
 
 model Notification {

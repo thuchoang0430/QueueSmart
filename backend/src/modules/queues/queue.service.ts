@@ -1,3 +1,10 @@
+import {
+  Prisma,
+  QueueEntryPriority,
+  QueueEntryStatus,
+  QueueStatus,
+} from "../../generated/prisma/client";
+import { prisma } from "../../database/prisma";
 import { ApiError } from "../../errors";
 import { recordHistory } from "../history/history.service";
 import {
@@ -5,16 +12,11 @@ import {
   notifyQueueJoined,
   notifyServed,
 } from "../notifications/notifications.service";
-import {
-  nextId,
-  store,
-  type EntryPriority,
-  type QueueEntry,
-  type Service,
-} from "../../store/memoryStore";
 import { validateOrThrow, type Schema } from "../../validation/validators";
 
 export const ENTRY_PRIORITIES = ["normal", "priority"] as const;
+
+export type EntryPriority = (typeof ENTRY_PRIORITIES)[number];
 
 export const joinQueueSchema: Schema = {
   priority: {
@@ -29,19 +31,32 @@ export interface JoinQueueInput {
   priority?: EntryPriority;
 }
 
-export interface QueueEntryWithWaitTime extends QueueEntry {
+export interface QueueEntryWithWaitTime {
+  id: number;
+  queueId: number;
+  userId: number;
   position: number;
+  joinTime: Date;
+  status: QueueEntryStatus;
+  priority: QueueEntryPriority;
   estimatedWaitMinutes: number;
+  user: {
+    id: number;
+    email: string;
+    profile: {
+      fullName: string;
+    } | null;
+  };
 }
 
-function findService(serviceId: number): Service {
-  const service = store.services.find((item) => item.id === serviceId);
-
-  if (!service) {
-    throw ApiError.notFound(`No service found with id ${serviceId}.`);
+function toDatabasePriority(
+  priority: EntryPriority | undefined,
+): QueueEntryPriority {
+  if (priority === "priority") {
+    return QueueEntryPriority.PRIORITY;
   }
 
-  return service;
+  return QueueEntryPriority.NORMAL;
 }
 
 export function estimateWaitTime(
@@ -51,173 +66,393 @@ export function estimateWaitTime(
   return Math.max(0, position - 1) * expectedDuration;
 }
 
-export function compareQueueEntries(
-  firstEntry: QueueEntry,
-  secondEntry: QueueEntry,
-): number {
-  if (firstEntry.priority !== secondEntry.priority) {
-    return firstEntry.priority === "priority" ? -1 : 1;
-  }
-
-  const arrivalDifference = firstEntry.joinedAt - secondEntry.joinedAt;
-
-  if (arrivalDifference !== 0) {
-    return arrivalDifference;
-  }
-
-  return firstEntry.id - secondEntry.id;
-}
-
-export function listQueue(serviceId: number): QueueEntryWithWaitTime[] {
-  const service = findService(serviceId);
-
-  const orderedQueue = store.queueEntries
-    .filter((entry) => entry.serviceId === serviceId)
-    .sort(compareQueueEntries);
-
-  return orderedQueue.map((entry, index) => {
-    const position = index + 1;
-
-    return {
-      ...entry,
-      position,
-      estimatedWaitMinutes: estimateWaitTime(position, service.duration),
-    };
+/**
+ * The API receives a serviceId.
+ * This function finds the newest queue connected to that service.
+ */
+async function findQueueByServiceId(
+  serviceId: number,
+  transaction: Prisma.TransactionClient = prisma,
+) {
+  const service = await transaction.service.findUnique({
+    where: {
+      id: serviceId,
+    },
+    include: {
+      queues: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 1,
+      },
+    },
   });
+
+  if (!service) {
+    throw ApiError.notFound(`No service found with id ${serviceId}.`);
+  }
+
+  const queue = service.queues[0];
+
+  if (!queue) {
+    throw ApiError.notFound(`No queue found for service id ${serviceId}.`);
+  }
+
+  return {
+    service,
+    queue,
+  };
 }
 
-export function joinQueue(
+async function reorderQueueEntries(
+  queueId: number,
+  transaction: Prisma.TransactionClient = prisma,
+): Promise<void> {
+  const entries = await transaction.queueEntry.findMany({
+    where: {
+      queueId,
+      status: QueueEntryStatus.WAITING,
+    },
+    orderBy: [
+      {
+        priority: "desc",
+      },
+      {
+        joinTime: "asc",
+      },
+      {
+        id: "asc",
+      },
+    ],
+    select: {
+      id: true,
+    },
+  });
+
+  await Promise.all(
+    entries.map((entry, index) =>
+      transaction.queueEntry.update({
+        where: {
+          id: entry.id,
+        },
+        data: {
+          position: index + 1,
+        },
+      }),
+    ),
+  );
+}
+
+export async function listQueue(
+  serviceId: number,
+): Promise<QueueEntryWithWaitTime[]> {
+  const { service, queue } = await findQueueByServiceId(serviceId);
+
+  const entries = await prisma.queueEntry.findMany({
+    where: {
+      queueId: queue.id,
+      status: QueueEntryStatus.WAITING,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          profile: {
+            select: {
+              fullName: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [
+      {
+        position: "asc",
+      },
+      {
+        joinTime: "asc",
+      },
+      {
+        id: "asc",
+      },
+    ],
+  });
+
+  return entries.map((entry) => ({
+    ...entry,
+    estimatedWaitMinutes: estimateWaitTime(
+      entry.position,
+      service.expectedDuration,
+    ),
+  }));
+}
+
+export async function joinQueue(
   serviceId: number,
   userId: number,
   input: unknown = {},
-): QueueEntryWithWaitTime {
+): Promise<QueueEntryWithWaitTime> {
   validateOrThrow(input ?? {}, joinQueueSchema);
 
   const data = (input ?? {}) as JoinQueueInput;
-  const service = findService(serviceId);
 
-  if (service.status !== "open") {
-    throw ApiError.conflict(`${service.name} is currently closed.`);
-  }
+  const result = await prisma.$transaction(async (transaction) => {
+    const { service, queue } = await findQueueByServiceId(
+      serviceId,
+      transaction,
+    );
 
-  const user = store.users.find((item) => item.id === userId);
+    if (queue.status !== QueueStatus.OPEN) {
+      throw ApiError.conflict(`${service.name} queue is currently closed.`);
+    }
 
-  if (!user) {
-    throw ApiError.notFound(`No user found with id ${userId}.`);
-  }
+    const user = await transaction.userCredential.findUnique({
+      where: {
+        id: userId,
+      },
+    });
 
-  const existingEntry = store.queueEntries.find(
-    (entry) => entry.serviceId === serviceId && entry.userId === userId,
-  );
+    if (!user) {
+      throw ApiError.notFound(`No user found with id ${userId}.`);
+    }
 
-  if (existingEntry) {
-    throw ApiError.conflict("You are already waiting in this queue.");
-  }
+    const existingEntry = await transaction.queueEntry.findFirst({
+      where: {
+        queueId: queue.id,
+        userId,
+        status: QueueEntryStatus.WAITING,
+      },
+    });
 
-  const newEntry: QueueEntry = {
-    id: nextId("queueEntries"),
-    serviceId,
-    userId,
-    name: user.name,
-    email: user.email,
-    priority: data.priority ?? "normal",
-    joinedAt: Date.now(),
-  };
+    if (existingEntry) {
+      throw ApiError.conflict("You are already waiting in this queue.");
+    }
 
-  store.queueEntries.push(newEntry);
+    const waitingCount = await transaction.queueEntry.count({
+      where: {
+        queueId: queue.id,
+        status: QueueEntryStatus.WAITING,
+      },
+    });
 
-  notifyQueueJoined(userId, service.name);
+    const entry = await transaction.queueEntry.create({
+      data: {
+        queueId: queue.id,
+        userId,
+        position: waitingCount + 1,
+        priority: toDatabasePriority(data.priority),
+        status: QueueEntryStatus.WAITING,
+      },
+    });
 
-  const joinedEntry = listQueue(serviceId).find(
-    (entry) => entry.id === newEntry.id,
-  );
+    await reorderQueueEntries(queue.id, transaction);
 
-  if (!joinedEntry) {
-    throw new Error("The new queue entry could not be found.");
-  }
-
-  return joinedEntry;
-}
-
-export function leaveQueue(serviceId: number, userId: number): QueueEntry {
-  const service = findService(serviceId);
-
-  const entryIndex = store.queueEntries.findIndex(
-    (entry) => entry.serviceId === serviceId && entry.userId === userId,
-  );
-
-  if (entryIndex === -1) {
-    throw ApiError.notFound("You are not currently waiting in this queue.");
-  }
-
-  const removedEntries = store.queueEntries.splice(entryIndex, 1);
-  const removedEntry = removedEntries[0];
-
-  if (!removedEntry) {
-    throw new Error("The queue entry could not be removed.");
-  }
-
-  recordHistory({
-    userId: removedEntry.userId,
-    serviceId: removedEntry.serviceId,
-    serviceName: service.name,
-    joinedAt: removedEntry.joinedAt,
-    outcome: "left",
+    return {
+      entryId: entry.id,
+      expectedDuration: service.expectedDuration,
+      serviceName: service.name,
+    };
   });
 
-  return removedEntry;
+  const entry = await prisma.queueEntry.findUnique({
+    where: {
+      id: result.entryId,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          profile: {
+            select: {
+              fullName: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!entry) {
+    throw new Error("The new queue entry could not be retrieved.");
+  }
+
+  notifyQueueJoined(userId, result.serviceName);
+
+  return {
+    ...entry,
+    estimatedWaitMinutes: estimateWaitTime(
+      entry.position,
+      result.expectedDuration,
+    ),
+  };
 }
 
-export function getUserQueueStatus(
+export async function leaveQueue(serviceId: number, userId: number) {
+  return prisma.$transaction(async (transaction) => {
+    const { queue } = await findQueueByServiceId(serviceId, transaction);
+
+    const entry = await transaction.queueEntry.findFirst({
+      where: {
+        queueId: queue.id,
+        userId,
+        status: QueueEntryStatus.WAITING,
+      },
+    });
+
+    if (!entry) {
+      throw ApiError.notFound("You are not currently waiting in this queue.");
+    }
+
+    const canceledEntry = await transaction.queueEntry.update({
+      where: {
+        id: entry.id,
+      },
+      data: {
+        status: QueueEntryStatus.CANCELED,
+        position: 0,
+      },
+    });
+
+    await reorderQueueEntries(queue.id, transaction);
+
+    return canceledEntry;
+  });
+}
+
+export async function getUserQueueStatus(
   serviceId: number,
   userId: number,
-): QueueEntryWithWaitTime {
-  const queue = listQueue(serviceId);
+): Promise<QueueEntryWithWaitTime> {
+  const { service, queue } = await findQueueByServiceId(serviceId);
 
-  const entry = queue.find((item) => item.userId === userId);
+  const entry = await prisma.queueEntry.findFirst({
+    where: {
+      queueId: queue.id,
+      userId,
+      status: QueueEntryStatus.WAITING,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          profile: {
+            select: {
+              fullName: true,
+            },
+          },
+        },
+      },
+    },
+  });
 
   if (!entry) {
     throw ApiError.notFound("You are not currently waiting in this queue.");
   }
 
-  return entry;
+  return {
+    ...entry,
+    estimatedWaitMinutes: estimateWaitTime(
+      entry.position,
+      service.expectedDuration,
+    ),
+  };
 }
 
-export function serveNext(serviceId: number): QueueEntryWithWaitTime {
-  const service = findService(serviceId);
-  const queue = listQueue(serviceId);
-  const nextUser = queue[0];
+export async function serveNext(
+  serviceId: number,
+): Promise<QueueEntryWithWaitTime> {
+  const result = await prisma.$transaction(async (transaction) => {
+    const { service, queue } = await findQueueByServiceId(
+      serviceId,
+      transaction,
+    );
 
-  if (!nextUser) {
-    throw ApiError.notFound("There is nobody waiting in this queue.");
-  }
+    const nextEntry = await transaction.queueEntry.findFirst({
+      where: {
+        queueId: queue.id,
+        status: QueueEntryStatus.WAITING,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: {
+                fullName: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [
+        {
+          position: "asc",
+        },
+        {
+          joinTime: "asc",
+        },
+        {
+          id: "asc",
+        },
+      ],
+    });
 
-  const entryIndex = store.queueEntries.findIndex(
-    (entry) => entry.id === nextUser.id,
-  );
+    if (!nextEntry) {
+      throw ApiError.notFound("There is nobody waiting in this queue.");
+    }
 
-  if (entryIndex === -1) {
-    throw new Error("The next queue entry could not be found.");
-  }
+    await transaction.queueEntry.update({
+      where: {
+        id: nextEntry.id,
+      },
+      data: {
+        status: QueueEntryStatus.SERVED,
+        position: 0,
+      },
+    });
 
-  store.queueEntries.splice(entryIndex, 1);
+    await reorderQueueEntries(queue.id, transaction);
+
+    return {
+      entry: nextEntry,
+      expectedDuration: service.expectedDuration,
+      serviceName: service.name,
+      queueId: queue.id,
+    };
+  });
 
   recordHistory({
-    userId: nextUser.userId,
-    serviceId: nextUser.serviceId,
-    serviceName: service.name,
-    joinedAt: nextUser.joinedAt,
+    userId: result.entry.userId,
+    serviceId,
+    serviceName: result.serviceName,
+    joinedAt: result.entry.joinTime.getTime(),
     outcome: "served",
   });
 
-  notifyServed(nextUser.userId, service.name);
+  notifyServed(result.entry.userId, result.serviceName);
 
-  const updatedQueue = listQueue(serviceId);
-  const newFirstEntry = updatedQueue[0];
+  const nextWaiting = await prisma.queueEntry.findFirst({
+    where: {
+      queueId: result.queueId,
+      status: QueueEntryStatus.WAITING,
+    },
+    orderBy: {
+      position: "asc",
+    },
+  });
 
-  if (newFirstEntry) {
-    notifyAlmostServed(newFirstEntry.userId, service.name);
+  if (nextWaiting) {
+    notifyAlmostServed(nextWaiting.userId, result.serviceName);
   }
 
-  return nextUser;
+  return {
+    ...result.entry,
+    status: QueueEntryStatus.SERVED,
+    position: 0,
+    estimatedWaitMinutes: 0,
+  };
 }
