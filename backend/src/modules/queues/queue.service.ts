@@ -6,6 +6,12 @@ import {
 } from "../../generated/prisma/client";
 import { prisma } from "../../database/prisma";
 import { ApiError } from "../../errors";
+import { recordHistory } from "../history/history.service";
+import {
+  notifyAlmostServed,
+  notifyQueueJoined,
+  notifyServed,
+} from "../notifications/notifications.service";
 import { validateOrThrow, type Schema } from "../../validation/validators";
 
 export const ENTRY_PRIORITIES = ["normal", "priority"] as const;
@@ -245,6 +251,7 @@ export async function joinQueue(
     return {
       entryId: entry.id,
       expectedDuration: service.expectedDuration,
+      serviceName: service.name,
     };
   });
 
@@ -270,6 +277,8 @@ export async function joinQueue(
   if (!entry) {
     throw new Error("The new queue entry could not be retrieved.");
   }
+
+  notifyQueueJoined(userId, result.serviceName);
 
   return {
     ...entry,
@@ -411,8 +420,34 @@ export async function serveNext(
     return {
       entry: nextEntry,
       expectedDuration: service.expectedDuration,
+      serviceName: service.name,
+      queueId: queue.id,
     };
   });
+
+  recordHistory({
+    userId: result.entry.userId,
+    serviceId,
+    serviceName: result.serviceName,
+    joinedAt: result.entry.joinTime.getTime(),
+    outcome: "served",
+  });
+
+  notifyServed(result.entry.userId, result.serviceName);
+
+  const nextWaiting = await prisma.queueEntry.findFirst({
+    where: {
+      queueId: result.queueId,
+      status: QueueEntryStatus.WAITING,
+    },
+    orderBy: {
+      position: "asc",
+    },
+  });
+
+  if (nextWaiting) {
+    notifyAlmostServed(nextWaiting.userId, result.serviceName);
+  }
 
   return {
     ...result.entry,
