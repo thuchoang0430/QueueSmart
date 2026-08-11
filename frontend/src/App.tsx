@@ -16,6 +16,7 @@ import Profile from './pages/user/Profile'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import ServiceManagement from './pages/admin/ServiceManagement'
 import QueueManagement from './pages/admin/QueueManagement'
+import Reports from './pages/admin/Reports'
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/services" element={<ServiceManagement />} />
         <Route path="/admin/queue-management" element={<QueueManagement />} />
+        <Route path="/admin/reports" element={<Reports />} />
       </Route>
     </Routes>
   )
