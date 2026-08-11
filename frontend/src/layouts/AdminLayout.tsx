@@ -6,6 +6,7 @@ const ADMIN_LINKS = [
   { to: '/admin', label: 'Admin Dashboard', end: true },
   { to: '/admin/services', label: 'Service Management' },
   { to: '/admin/queue-management', label: 'Queue Management' },
+  { to: '/admin/reports', label: 'Reports' },
 ]
 
 export default function AdminLayout() {
