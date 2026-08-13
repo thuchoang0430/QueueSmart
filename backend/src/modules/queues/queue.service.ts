@@ -325,11 +325,14 @@ export async function joinQueue(
 
   await notifyQueueJoined(userId, result.serviceName);
 
+  const historicalWaitMinutes = await getHistoricalWaitMinutes(serviceId);
+
   return {
     ...entry,
-    estimatedWaitMinutes: estimateWaitTime(
+    estimatedWaitMinutes: estimateSmartWaitTime(
       entry.position,
       result.expectedDuration,
+      historicalWaitMinutes,
     ),
   };
 }
@@ -432,11 +435,14 @@ export async function getUserQueueStatus(
     throw ApiError.notFound("You are not currently waiting in this queue.");
   }
 
+  const historicalWaitMinutes = await getHistoricalWaitMinutes(serviceId);
+
   return {
     ...entry,
-    estimatedWaitMinutes: estimateWaitTime(
+    estimatedWaitMinutes: estimateSmartWaitTime(
       entry.position,
       service.expectedDuration,
+      historicalWaitMinutes,
     ),
   };
 }
