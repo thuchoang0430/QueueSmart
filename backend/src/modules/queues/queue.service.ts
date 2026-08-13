@@ -1,4 +1,5 @@
 import {
+  HistoryOutcome,
   Prisma,
   QueueEntryPriority,
   QueueEntryStatus,
@@ -92,6 +93,24 @@ export function estimateSmartWaitTime(
   const smartEstimate = fallbackWait * 0.6 + historicalAverage * 0.4;
 
   return Math.max(0, Math.round(smartEstimate));
+}
+
+async function getHistoricalWaitMinutes(serviceId: number): Promise<number[]> {
+  const history = await prisma.history.findMany({
+    where: {
+      serviceId,
+      outcome: HistoryOutcome.SERVED,
+    },
+    orderBy: {
+      endedAt: "desc",
+    },
+    take: 20,
+    select: {
+      waitMinutes: true,
+    },
+  });
+
+  return history.map((record) => record.waitMinutes);
 }
 async function findQueueByServiceId(
   serviceId: number,
