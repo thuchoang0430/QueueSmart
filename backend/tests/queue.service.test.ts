@@ -9,6 +9,7 @@ import {
 import { prisma } from "../src/database/prisma";
 
 import {
+  estimateSmartWaitTime,
   estimateWaitTime,
   getUserQueueStatus,
   joinQueue,
@@ -103,7 +104,37 @@ describe("estimateWaitTime", () => {
     expect(estimateWaitTime(0, 20)).toBe(0);
   });
 });
+describe("estimateSmartWaitTime", () => {
+  it("falls back to the original estimate when history is insufficient", () => {
+    const result = estimateSmartWaitTime(3, 20, [10, 15]);
 
+    expect(result).toBe(40);
+  });
+
+  it("uses historical wait times when enough history exists", () => {
+    const result = estimateSmartWaitTime(3, 20, [10, 20, 30]);
+
+    expect(result).toBe(32);
+  });
+
+  it("returns zero for the first user in queue", () => {
+    const result = estimateSmartWaitTime(1, 20, [10, 20, 30]);
+
+    expect(result).toBe(0);
+  });
+
+  it("ignores invalid historical values", () => {
+    const result = estimateSmartWaitTime(2, 20, [10, Number.NaN, -5]);
+
+    expect(result).toBe(20);
+  });
+
+  it("never returns a negative wait time", () => {
+    const result = estimateSmartWaitTime(0, 20, [10, 20, 30]);
+
+    expect(result).toBe(0);
+  });
+});
 describe("joinQueue", () => {
   it("persists a user in an open queue", async () => {
     const result = await joinQueue(queueId, firstUserId);
