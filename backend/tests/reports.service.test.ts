@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { generateReport, parseReportFilter } from '../src/modules/reports/reports.service'
+import { generateReport, listAllHistory, parseReportFilter } from '../src/modules/reports/reports.service'
 import { recordHistory, type HistoryOutcome } from '../src/modules/history/history.service'
 import { disconnectDb, resetUsers } from './db'
 
@@ -221,5 +221,52 @@ describe('parseReportFilter', () => {
 
   it('rejects a well-formed but impossible date', () => {
     expect(() => parseReportFilter({ from: '2026-13-45' })).toThrow()
+  })
+})
+
+describe('listAllHistory', () => {
+  it('returns an empty list when there is no history', async () => {
+    expect(await listAllHistory()).toEqual([])
+  })
+
+  it('lists visits from every user, not just one', async () => {
+    await addVisit({ userId: 1, serviceId: 1, waitMinutes: 10, outcome: 'served' })
+    await addVisit({ userId: 2, serviceId: 2, waitMinutes: 5, outcome: 'left' })
+
+    const entries = await listAllHistory()
+    expect(entries).toHaveLength(2)
+    expect(new Set(entries.map((entry) => entry.userId))).toEqual(new Set([1, 2]))
+  })
+
+  it('attaches the customer name and email to each visit', async () => {
+    // User 1 is the seeded Student User (see tests/db.ts).
+    await addVisit({ userId: 1, serviceId: 1, waitMinutes: 10, outcome: 'served' })
+
+    const [entry] = await listAllHistory()
+    expect(entry).toMatchObject({
+      userId: 1,
+      userName: 'Student User',
+      userEmail: 'user@test.com',
+      serviceId: 1,
+      waitMinutes: 10,
+      outcome: 'served',
+    })
+  })
+
+  it('orders visits most recent first', async () => {
+    await addVisit({ serviceId: 1, serviceName: 'Older', waitMinutes: 10, outcome: 'served', endedAt: 1_000_000 })
+    await addVisit({ serviceId: 2, serviceName: 'Newer', waitMinutes: 5, outcome: 'left', endedAt: 2_000_000 })
+
+    const entries = await listAllHistory()
+    expect(entries.map((entry) => entry.serviceName)).toEqual(['Newer', 'Older'])
+  })
+
+  it('narrows to a single service with the same filter', async () => {
+    await addVisit({ serviceId: 1, waitMinutes: 10, outcome: 'served' })
+    await addVisit({ serviceId: 2, waitMinutes: 5, outcome: 'left' })
+
+    const entries = await listAllHistory({ serviceId: 1 })
+    expect(entries).toHaveLength(1)
+    expect(entries[0].serviceId).toBe(1)
   })
 })

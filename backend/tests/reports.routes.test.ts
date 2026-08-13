@@ -136,3 +136,56 @@ describe('GET /api/reports - filtering', () => {
     expect(response.body.error.fields).toHaveProperty('from')
   })
 })
+
+describe('GET /api/reports/history - access control', () => {
+  it('returns 401 without a token', async () => {
+    const response = await request(app).get('/api/reports/history')
+    expect(response.status).toBe(401)
+  })
+
+  it('returns 403 for a signed-in non-admin user', async () => {
+    const response = await request(app).get('/api/reports/history').set('Authorization', bearer(userToken()))
+    expect(response.status).toBe(403)
+  })
+})
+
+describe('GET /api/reports/history - payload', () => {
+  it('returns every user\'s visits, most recent first, with customer info', async () => {
+    await addVisit({ userId: 1, serviceId: 1, serviceName: 'Older', waitMinutes: 18, outcome: 'served', endedAt: 1_000_000 })
+    await addVisit({ userId: 2, serviceId: 2, serviceName: 'Newer', waitMinutes: 4, outcome: 'left', endedAt: 2_000_000 })
+
+    const response = await request(app).get('/api/reports/history').set('Authorization', bearer(adminToken()))
+
+    expect(response.status).toBe(200)
+    expect(response.body.history).toHaveLength(2)
+    expect(response.body.history[0]).toMatchObject({
+      userId: 2,
+      userEmail: 'admin@test.com',
+      serviceName: 'Newer',
+      outcome: 'left',
+    })
+    expect(response.body.history[1]).toMatchObject({ userId: 1, serviceName: 'Older', outcome: 'served' })
+  })
+
+  it('applies the serviceId filter', async () => {
+    await addVisit({ serviceId: 1, waitMinutes: 10, outcome: 'served' })
+    await addVisit({ serviceId: 2, waitMinutes: 5, outcome: 'left' })
+
+    const response = await request(app)
+      .get('/api/reports/history?serviceId=2')
+      .set('Authorization', bearer(adminToken()))
+
+    expect(response.status).toBe(200)
+    expect(response.body.history).toHaveLength(1)
+    expect(response.body.history[0].serviceId).toBe(2)
+  })
+
+  it('returns 400 for a malformed date', async () => {
+    const response = await request(app)
+      .get('/api/reports/history?to=not-a-date')
+      .set('Authorization', bearer(adminToken()))
+
+    expect(response.status).toBe(400)
+    expect(response.body.error.fields).toHaveProperty('to')
+  })
+})

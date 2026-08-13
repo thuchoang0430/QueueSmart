@@ -191,3 +191,45 @@ export async function generateReport(filter: ReportFilter = {}): Promise<ReportS
     serviceStatistics: buildServiceStatistics(records),
   }
 }
+
+/** One row of the admin history list: a single visit, with the customer on it. */
+export interface HistoryReportEntry {
+  id: number
+  userId: number
+  userName: string
+  userEmail: string
+  serviceId: number
+  serviceName: string
+  /** Epoch ms. */
+  joinedAt: number
+  /** Epoch ms. */
+  endedAt: number
+  waitMinutes: number
+  outcome: 'served' | 'left'
+}
+
+/**
+ * Lists every user's completed visits, most recent first, optionally narrowed
+ * by the same filter as generateReport. This is the admin "who was served /
+ * who left" view; the per-user History page uses history.service instead.
+ */
+export async function listAllHistory(filter: ReportFilter = {}): Promise<HistoryReportEntry[]> {
+  const records = await prisma.history.findMany({
+    where: buildWhere(filter),
+    orderBy: { endedAt: 'desc' },
+    include: { user: { include: { profile: true } } },
+  })
+
+  return records.map((record) => ({
+    id: record.id,
+    userId: record.userId,
+    userName: record.user.profile?.fullName ?? '',
+    userEmail: record.user.email,
+    serviceId: record.serviceId,
+    serviceName: record.serviceName,
+    joinedAt: record.joinedAt.getTime(),
+    endedAt: record.endedAt.getTime(),
+    waitMinutes: record.waitMinutes,
+    outcome: record.outcome === DbOutcome.SERVED ? 'served' : 'left',
+  }))
+}
