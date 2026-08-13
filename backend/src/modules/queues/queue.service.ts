@@ -58,7 +58,6 @@ function toDatabasePriority(
 
   return QueueEntryPriority.NORMAL;
 }
-
 export function estimateWaitTime(
   position: number,
   expectedDuration: number,
@@ -66,10 +65,34 @@ export function estimateWaitTime(
   return Math.max(0, position - 1) * expectedDuration;
 }
 
-/**
- * The API receives a serviceId.
- * This function finds the newest queue connected to that service.
- */
+export const MIN_HISTORY_SAMPLES = 3;
+
+export function estimateSmartWaitTime(
+  position: number,
+  expectedDuration: number,
+  historicalWaitMinutes: number[],
+): number {
+  const fallbackWait = estimateWaitTime(position, expectedDuration);
+
+  if (position <= 1) {
+    return 0;
+  }
+
+  const validHistory = historicalWaitMinutes.filter(
+    (wait) => Number.isFinite(wait) && wait >= 0,
+  );
+
+  if (validHistory.length < MIN_HISTORY_SAMPLES) {
+    return fallbackWait;
+  }
+
+  const historicalAverage =
+    validHistory.reduce((sum, wait) => sum + wait, 0) / validHistory.length;
+
+  const smartEstimate = fallbackWait * 0.6 + historicalAverage * 0.4;
+
+  return Math.max(0, Math.round(smartEstimate));
+}
 async function findQueueByServiceId(
   serviceId: number,
   transaction: Prisma.TransactionClient = prisma,
@@ -308,9 +331,7 @@ export async function leaveQueue(
     });
 
     if (!entry) {
-      throw ApiError.notFound(
-        "You are not currently waiting in this queue.",
-      );
+      throw ApiError.notFound("You are not currently waiting in this queue.");
     }
 
     const canceledEntry = await transaction.queueEntry.update({
