@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  HistoryOutcome,
   QueueEntryPriority,
   QueueEntryStatus,
   QueueStatus,
@@ -21,6 +22,7 @@ import {
 let queueId: number;
 let firstUserId: number;
 let secondUserId: number;
+let serviceId: number;
 
 async function clearTestData(): Promise<void> {
   await prisma.history.deleteMany();
@@ -75,7 +77,7 @@ beforeEach(async () => {
       priorityLevel: 1,
     },
   });
-
+  serviceId = service.id;
   const queue = await prisma.queue.create({
     data: {
       serviceId: service.id,
@@ -216,7 +218,109 @@ describe("queue ordering", () => {
       position: 2,
     });
   });
+  it("ignores users who left when calculating historical wait time", async () => {
+    const now = new Date();
 
+    await prisma.history.createMany({
+      data: [
+        {
+          userId: firstUserId,
+          serviceId,
+          serviceName: "Academic Advising",
+          joinedAt: new Date(now.getTime() - 10 * 60_000),
+          endedAt: now,
+          waitMinutes: 10,
+          outcome: HistoryOutcome.SERVED,
+        },
+        {
+          userId: firstUserId,
+          serviceId,
+          serviceName: "Academic Advising",
+          joinedAt: new Date(now.getTime() - 20 * 60_000),
+          endedAt: now,
+          waitMinutes: 20,
+          outcome: HistoryOutcome.SERVED,
+        },
+        {
+          userId: secondUserId,
+          serviceId,
+          serviceName: "Academic Advising",
+          joinedAt: new Date(now.getTime() - 30 * 60_000),
+          endedAt: now,
+          waitMinutes: 30,
+          outcome: HistoryOutcome.LEFT,
+        },
+      ],
+    });
+
+    await joinQueue(serviceId, firstUserId);
+    await joinQueue(serviceId, secondUserId);
+
+    const status = await getUserQueueStatus(serviceId, secondUserId);
+
+    expect(status.estimatedWaitMinutes).toBe(20);
+  });
+  it("uses historical wait times without breaking priority ordering", async () => {
+    const now = new Date();
+
+    await prisma.history.createMany({
+      data: [
+        {
+          userId: firstUserId,
+          serviceId,
+          serviceName: "Academic Advising",
+          joinedAt: new Date(now.getTime() - 10 * 60_000),
+          endedAt: now,
+          waitMinutes: 10,
+          outcome: HistoryOutcome.SERVED,
+        },
+        {
+          userId: firstUserId,
+          serviceId,
+          serviceName: "Academic Advising",
+          joinedAt: new Date(now.getTime() - 10 * 60_000),
+          endedAt: now,
+          waitMinutes: 10,
+          outcome: HistoryOutcome.SERVED,
+        },
+        {
+          userId: secondUserId,
+          serviceId,
+          serviceName: "Academic Advising",
+          joinedAt: new Date(now.getTime() - 10 * 60_000),
+          endedAt: now,
+          waitMinutes: 10,
+          outcome: HistoryOutcome.SERVED,
+        },
+      ],
+    });
+
+    await joinQueue(serviceId, firstUserId, {
+      priority: "normal",
+    });
+
+    await joinQueue(serviceId, secondUserId, {
+      priority: "priority",
+    });
+
+    const queue = await listQueue(serviceId);
+
+    expect(queue).toHaveLength(2);
+
+    expect(queue[0]).toMatchObject({
+      userId: secondUserId,
+      priority: QueueEntryPriority.PRIORITY,
+      position: 1,
+      estimatedWaitMinutes: 0,
+    });
+
+    expect(queue[1]).toMatchObject({
+      userId: firstUserId,
+      priority: QueueEntryPriority.NORMAL,
+      position: 2,
+      estimatedWaitMinutes: 16,
+    });
+  });
   it("orders users with the same priority by join time", async () => {
     await joinQueue(queueId, firstUserId);
     await joinQueue(queueId, secondUserId);
