@@ -4,6 +4,7 @@ import {
   type History as DbHistory,
 } from '../../generated/prisma/client'
 import { prisma } from '../../database/prisma'
+import { ApiError } from '../../errors'
 
 // Reporting module for A4. Aggregates the persisted History table into the
 // numbers the Admin Reports page shows. This is an admin-wide view over every
@@ -44,6 +45,60 @@ export interface ReportFilter {
   from?: number
   /** Inclusive upper bound on a visit's endedAt (epoch ms). */
   to?: number
+}
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+/** Parses an optional `serviceId` query value into a positive integer. */
+function parseServiceIdParam(raw: unknown): number | undefined {
+  if (raw === undefined) return undefined
+
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 1) {
+    throw ApiError.validation({ serviceId: 'Service id must be a positive whole number.' })
+  }
+  return value
+}
+
+/**
+ * Parses an optional `YYYY-MM-DD` query value into an epoch-ms bound.
+ * `endOfDay` pins `to` to 23:59:59.999 so the whole day is inclusive; `from`
+ * pins to 00:00:00.000.
+ */
+function parseDateParam(raw: unknown, field: 'from' | 'to', endOfDay: boolean): number | undefined {
+  if (raw === undefined) return undefined
+
+  if (typeof raw !== 'string' || !DATE_PATTERN.test(raw)) {
+    throw ApiError.validation({ [field]: `\`${field}\` must be a date in YYYY-MM-DD format.` })
+  }
+
+  const time = endOfDay ? 'T23:59:59.999' : 'T00:00:00.000'
+  const ms = new Date(`${raw}${time}`).getTime()
+  if (Number.isNaN(ms)) {
+    throw ApiError.validation({ [field]: `\`${field}\` is not a valid date.` })
+  }
+  return ms
+}
+
+/**
+ * Turns raw request query params into a validated ReportFilter. Kept here (not
+ * in the controller) so the parsing and its 400s are unit-testable without
+ * Express. Absent params stay absent, so an empty query reports over everything.
+ */
+export function parseReportFilter(query: unknown): ReportFilter {
+  const params = (query ?? {}) as Record<string, unknown>
+  const filter: ReportFilter = {}
+
+  const serviceId = parseServiceIdParam(params.serviceId)
+  if (serviceId !== undefined) filter.serviceId = serviceId
+
+  const from = parseDateParam(params.from, 'from', false)
+  if (from !== undefined) filter.from = from
+
+  const to = parseDateParam(params.to, 'to', true)
+  if (to !== undefined) filter.to = to
+
+  return filter
 }
 
 /** Rounds to one decimal place so averages read cleanly without float noise. */

@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { generateReport } from '../src/modules/reports/reports.service'
+import { generateReport, parseReportFilter } from '../src/modules/reports/reports.service'
 import { recordHistory, type HistoryOutcome } from '../src/modules/history/history.service'
 import { disconnectDb, resetUsers } from './db'
 
@@ -185,5 +185,41 @@ describe('generateReport - filtering', () => {
     expect(report.serviceStatistics).toEqual([
       { serviceId: 1, serviceName: 'Service 1', totalServed: 1, averageWaitTime: 20, queueActivity: 1 },
     ])
+  })
+})
+
+// Pure parsing - no database needed, but it lives here alongside the service.
+describe('parseReportFilter', () => {
+  it('returns an empty filter for no query params', () => {
+    expect(parseReportFilter({})).toEqual({})
+    expect(parseReportFilter(undefined)).toEqual({})
+  })
+
+  it('parses serviceId into a number', () => {
+    expect(parseReportFilter({ serviceId: '3' })).toEqual({ serviceId: 3 })
+  })
+
+  it('pins from to the start of the day and to to the end of the day', () => {
+    const filter = parseReportFilter({ from: '2026-08-13', to: '2026-08-13' })
+    expect(filter.from).toBe(new Date('2026-08-13T00:00:00.000').getTime())
+    expect(filter.to).toBe(new Date('2026-08-13T23:59:59.999').getTime())
+  })
+
+  it('rejects a non-numeric serviceId', () => {
+    expect(() => parseReportFilter({ serviceId: 'abc' })).toThrow()
+  })
+
+  it('rejects a zero or negative serviceId', () => {
+    expect(() => parseReportFilter({ serviceId: '0' })).toThrow()
+    expect(() => parseReportFilter({ serviceId: '-2' })).toThrow()
+  })
+
+  it('rejects a malformed date', () => {
+    expect(() => parseReportFilter({ from: '13-08-2026' })).toThrow()
+    expect(() => parseReportFilter({ to: '2026/08/13' })).toThrow()
+  })
+
+  it('rejects a well-formed but impossible date', () => {
+    expect(() => parseReportFilter({ from: '2026-13-45' })).toThrow()
   })
 })
