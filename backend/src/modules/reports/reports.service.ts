@@ -1,13 +1,19 @@
-import { store, type HistoryRecord } from '../../store/memoryStore'
+import {
+  HistoryOutcome as DbOutcome,
+  Prisma,
+  type History as DbHistory,
+} from '../../generated/prisma/client'
+import { prisma } from '../../database/prisma'
 
-// Reporting module for A4. Aggregates the history log into the numbers the
-// Admin Reports page shows. This is an admin-wide view over every user's
-// visits, unlike the history module which only ever returns one user's records.
+// Reporting module for A4. Aggregates the persisted History table into the
+// numbers the Admin Reports page shows. This is an admin-wide view over every
+// user's visits, unlike the history module which only ever returns one user's
+// records.
 //
-// Everything is derived from store.history: each completed visit lands there
-// (served or left) carrying serviceId, a denormalised serviceName, waitMinutes
-// and the outcome. As with every module this is plain logic over the store -
-// no Express here, which is where the unit-test coverage comes from.
+// Each completed visit is written to History (served or left) with its
+// serviceId, a denormalised serviceName, waitMinutes and outcome. We read those
+// rows and fold them into totals here rather than in the database so the
+// aggregation logic stays plain and unit-testable.
 
 /** Per-service slice of the report. Field names are the contract the frontend consumes. */
 export interface ServiceReport {
@@ -26,6 +32,20 @@ export interface ReportSummary {
   serviceStatistics: ServiceReport[]
 }
 
+/**
+ * Optional narrowing for a report. Every field is independent and combinable.
+ * Dates are epoch ms so this stays easy to test - the controller turns the
+ * `YYYY-MM-DD` query strings into these bounds.
+ */
+export interface ReportFilter {
+  /** Only count visits to this service. */
+  serviceId?: number
+  /** Inclusive lower bound on a visit's endedAt (epoch ms). */
+  from?: number
+  /** Inclusive upper bound on a visit's endedAt (epoch ms). */
+  to?: number
+}
+
 /** Rounds to one decimal place so averages read cleanly without float noise. */
 function roundTo1dp(value: number): number {
   return Math.round(value * 10) / 10
@@ -36,17 +56,35 @@ function roundTo1dp(value: number): number {
  * queue never waited a full service, so folding them in would understate the
  * real wait. Returns 0 when nobody in the set was served.
  */
-function averageServedWait(records: HistoryRecord[]): number {
-  const served = records.filter((record) => record.outcome === 'served')
+function averageServedWait(records: DbHistory[]): number {
+  const served = records.filter((record) => record.outcome === DbOutcome.SERVED)
   if (served.length === 0) return 0
 
   const total = served.reduce((sum, record) => sum + record.waitMinutes, 0)
   return roundTo1dp(total / served.length)
 }
 
-/** Groups records by serviceId, preserving insertion order of first appearance. */
-function groupByService(records: HistoryRecord[]): Map<number, HistoryRecord[]> {
-  const groups = new Map<number, HistoryRecord[]>()
+/** Turns a report filter into a Prisma `where` clause over the History table. */
+function buildWhere(filter: ReportFilter): Prisma.HistoryWhereInput {
+  const where: Prisma.HistoryWhereInput = {}
+
+  if (filter.serviceId !== undefined) {
+    where.serviceId = filter.serviceId
+  }
+
+  if (filter.from !== undefined || filter.to !== undefined) {
+    where.endedAt = {
+      ...(filter.from !== undefined ? { gte: new Date(filter.from) } : {}),
+      ...(filter.to !== undefined ? { lte: new Date(filter.to) } : {}),
+    }
+  }
+
+  return where
+}
+
+/** Groups records by serviceId, preserving first-seen order. */
+function groupByService(records: DbHistory[]): Map<number, DbHistory[]> {
+  const groups = new Map<number, DbHistory[]>()
 
   for (const record of records) {
     const existing = groups.get(record.serviceId)
@@ -61,13 +99,13 @@ function groupByService(records: HistoryRecord[]): Map<number, HistoryRecord[]> 
 }
 
 /** Builds the per-service statistics, ordered by serviceId for a stable table. */
-function buildServiceStatistics(records: HistoryRecord[]): ServiceReport[] {
+function buildServiceStatistics(records: DbHistory[]): ServiceReport[] {
   return [...groupByService(records).entries()]
     .map(([serviceId, group]) => ({
       serviceId,
-      // Denormalised name off the latest record, so a deleted service still reports.
+      // Denormalised name off the latest record, so a renamed/removed service still reports.
       serviceName: group[group.length - 1].serviceName,
-      totalServed: group.filter((record) => record.outcome === 'served').length,
+      totalServed: group.filter((record) => record.outcome === DbOutcome.SERVED).length,
       averageWaitTime: averageServedWait(group),
       queueActivity: group.length,
     }))
@@ -75,18 +113,24 @@ function buildServiceStatistics(records: HistoryRecord[]): ServiceReport[] {
 }
 
 /**
- * Produces the full admin report over the current history log.
+ * Produces the admin report over the History table, optionally narrowed by
+ * `filter` (service and/or an endedAt date range). With no filter it reports
+ * over everything.
  *
  * - totalServed:     visits that ended in 'served'
  * - averageWaitTime: mean waitMinutes of served visits (minutes, 1 dp)
  * - queueActivity:   total participations recorded (served + left)
  * - serviceStatistics: the same three numbers broken down per service
  */
-export function generateReport(): ReportSummary {
-  const records = store.history
+export async function generateReport(filter: ReportFilter = {}): Promise<ReportSummary> {
+  // Ordered oldest-first so the per-service "latest name" is the last in each group.
+  const records = await prisma.history.findMany({
+    where: buildWhere(filter),
+    orderBy: { endedAt: 'asc' },
+  })
 
   return {
-    totalServed: records.filter((record) => record.outcome === 'served').length,
+    totalServed: records.filter((record) => record.outcome === DbOutcome.SERVED).length,
     averageWaitTime: averageServedWait(records),
     queueActivity: records.length,
     serviceStatistics: buildServiceStatistics(records),
