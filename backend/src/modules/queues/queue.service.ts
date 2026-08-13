@@ -221,11 +221,14 @@ export async function listQueue(
     ],
   });
 
+  const historicalWaitMinutes = await getHistoricalWaitMinutes(serviceId);
+
   return entries.map((entry) => ({
     ...entry,
-    estimatedWaitMinutes: estimateWaitTime(
+    estimatedWaitMinutes: estimateSmartWaitTime(
       entry.position,
       service.expectedDuration,
+      historicalWaitMinutes,
     ),
   }));
 }
