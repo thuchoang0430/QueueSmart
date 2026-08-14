@@ -7,7 +7,9 @@ import {
 import { ApiError } from '../../api/client'
 import {
   getAdminReport,
+  getAdminReportHistory,
   type AdminReport,
+  type HistoryReportEntry,
   type ReportFilters,
 } from '../../api/reports'
 import { useServices } from '../../context/ServicesContext'
@@ -114,6 +116,8 @@ export default function Reports() {
 
   const [report, setReport] =
     useState<AdminReport | null>(null)
+  const [history, setHistory] =
+    useState<HistoryReportEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [usingPreview, setUsingPreview] =
@@ -125,21 +129,27 @@ export default function Reports() {
         setLoading(true)
         setError(null)
 
-        const data = await getAdminReport(filters)
+        const [data, historyData] = await Promise.all([
+          getAdminReport(filters),
+          getAdminReportHistory(filters),
+        ])
 
         setReport(data)
+        setHistory(historyData)
         setUsingPreview(false)
       } catch (loadError) {
         if (canUsePreviewData(loadError)) {
           setReport(
             buildPreviewReport(services, filters),
           )
+          setHistory([])
           setUsingPreview(true)
           setError(null)
           return
         }
 
         setReport(null)
+        setHistory([])
         setUsingPreview(false)
         setError(
           loadError instanceof ApiError
@@ -474,6 +484,60 @@ export default function Reports() {
         ) : (
           <p className="empty">
             No report data matches the selected filters.
+          </p>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 24 }}>
+        <h2>Customer Queue History</h2>
+
+        <p
+          style={{
+            color: 'var(--text-muted)',
+            fontSize: 13,
+            marginBottom: 14,
+          }}
+        >
+          Customer participation history for the selected
+          report filters.
+        </p>
+
+        {loading ? (
+          <p className="empty">Loading history...</p>
+        ) : history.length > 0 ? (
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Email</th>
+                <th>Service</th>
+                <th>Wait Time</th>
+                <th>Outcome</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {history.map((entry) => (
+                <tr key={entry.id}>
+                  <td>
+                    {entry.userName || 'Unknown'}
+                  </td>
+                  <td>{entry.userEmail}</td>
+                  <td>{entry.serviceName}</td>
+                  <td>{entry.waitMinutes} min</td>
+                  <td>
+                    {entry.outcome === 'served'
+                      ? 'Served'
+                      : 'Left'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="empty">
+            No customer history matches the selected
+            filters.
           </p>
         )}
       </div>
