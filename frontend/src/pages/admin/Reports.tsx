@@ -237,6 +237,26 @@ export default function Reports() {
         item.averageWaitTime.toFixed(1),
         item.queueActivity,
       ]),
+      [],
+      ['Customer Queue History'],
+      [
+        'Customer',
+        'Email',
+        'Service',
+        'Joined At',
+        'Ended At',
+        'Wait Time (minutes)',
+        'Outcome',
+      ],
+      ...history.map((entry) => [
+        entry.userName || 'Unknown',
+        entry.userEmail,
+        entry.serviceName,
+        new Date(entry.joinedAt).toLocaleString(),
+        new Date(entry.endedAt).toLocaleString(),
+        entry.waitMinutes,
+        entry.outcome === 'served' ? 'Served' : 'Left',
+      ]),
     ]
 
     const csv = rows
