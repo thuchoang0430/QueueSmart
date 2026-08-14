@@ -6,6 +6,7 @@ import historyRoutes from './modules/history/history.routes'
 import notificationsRoutes from './modules/notifications/notifications.routes'
 import profileRoutes from './modules/profile/profile.routes'
 import queueRoutes from './modules/queues/queues.routes'
+import reportsRoutes from './modules/reports/reports.routes'
 import servicesRoutes from './modules/services/services.routes'
 
 /**
@@ -28,6 +29,7 @@ export function createApp(): Express {
   app.use('/api/queues', queueRoutes)
   app.use('/api/history', historyRoutes)
   app.use('/api/notifications', notificationsRoutes)
+  app.use('/api/reports', reportsRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
