@@ -105,6 +105,10 @@ function canUsePreviewData(error: unknown): boolean {
   )
 }
 
+function formatHistoryTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleString()
+}
+
 export default function Reports() {
   const { services } = useServices()
 
@@ -225,6 +229,7 @@ export default function Reports() {
       ],
       ['Queue Activity', report.queueActivity],
       [],
+      ['Service Statistics'],
       [
         'Service',
         'Total Served',
@@ -236,6 +241,32 @@ export default function Reports() {
         item.totalServed,
         item.averageWaitTime.toFixed(1),
         item.queueActivity,
+      ]),
+      [],
+      ['Customer Queue History'],
+      [
+        'Visit ID',
+        'User ID',
+        'Customer',
+        'Email',
+        'Service ID',
+        'Service',
+        'Joined At',
+        'Ended At',
+        'Wait Minutes',
+        'Outcome',
+      ],
+      ...history.map((entry) => [
+        entry.id,
+        entry.userId,
+        entry.userName || 'Unknown',
+        entry.userEmail,
+        entry.serviceId,
+        entry.serviceName,
+        formatHistoryTime(entry.joinedAt),
+        formatHistoryTime(entry.endedAt),
+        entry.waitMinutes,
+        entry.outcome,
       ]),
     ]
 
@@ -279,9 +310,9 @@ export default function Reports() {
           }}
         >
           Preview data is shown because the reporting API
-          is not available yet. The page will use live
-          report data automatically when the endpoint is
-          connected.
+          is not available on this branch yet. Live data
+          will be used automatically once the reporting
+          backend is included.
         </div>
       )}
 
@@ -401,7 +432,7 @@ export default function Reports() {
               : `${report?.averageWaitTime.toFixed(1) ?? '0.0'} min`}
           </div>
           <div className="hint">
-            Across the selected services
+            Served visits only
           </div>
         </div>
 
@@ -413,7 +444,7 @@ export default function Reports() {
               : report?.queueActivity ?? 0}
           </div>
           <div className="hint">
-            Queue events in this report
+            Served + left visits
           </div>
         </div>
       </div>
@@ -511,6 +542,8 @@ export default function Reports() {
                 <th>Customer</th>
                 <th>Email</th>
                 <th>Service</th>
+                <th>Joined</th>
+                <th>Ended</th>
                 <th>Wait Time</th>
                 <th>Outcome</th>
               </tr>
@@ -524,11 +557,25 @@ export default function Reports() {
                   </td>
                   <td>{entry.userEmail}</td>
                   <td>{entry.serviceName}</td>
+                  <td>
+                    {formatHistoryTime(entry.joinedAt)}
+                  </td>
+                  <td>
+                    {formatHistoryTime(entry.endedAt)}
+                  </td>
                   <td>{entry.waitMinutes} min</td>
                   <td>
-                    {entry.outcome === 'served'
-                      ? 'Served'
-                      : 'Left'}
+                    <span
+                      className={`badge ${
+                        entry.outcome === 'served'
+                          ? 'badge-success'
+                          : 'badge-gray'
+                      }`}
+                    >
+                      {entry.outcome === 'served'
+                        ? 'Served'
+                        : 'Left'}
+                    </span>
                   </td>
                 </tr>
               ))}
