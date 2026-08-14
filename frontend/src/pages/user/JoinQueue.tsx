@@ -218,7 +218,7 @@ export default function JoinQueue() {
                   <>
                     <p>Position #{activeQueue.entry.position}</p>
                     <p>
-                      {activeQueue.entry.estimatedWaitMinutes} minutes estimated wait
+                      Smart estimated wait: {activeQueue.entry.estimatedWaitMinutes} minutes
                     </p>
                   </>
                 )}
@@ -269,7 +269,7 @@ export default function JoinQueue() {
                 </p>
 
                 <p>
-                  <strong>Estimated wait:</strong>{' '}
+                  <strong>Smart estimated wait:</strong>{' '}
                   {activeQueue.entry.estimatedWaitMinutes} minutes
                 </p>
               </>

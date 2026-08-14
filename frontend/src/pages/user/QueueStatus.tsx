@@ -216,7 +216,7 @@ export default function QueueStatus() {
 
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-slate-500">
-            Estimated Wait
+            Smart Estimated Wait
           </p>
 
           <p className="mt-2 text-xl font-semibold text-slate-900">
